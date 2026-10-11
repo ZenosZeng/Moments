@@ -1,0 +1,36 @@
+{
+  "name": "moments-public-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "build": "vue-tsc -b && vite build",
+    "test": "vitest run",
+    "audit": "node scripts/audit-public-tree.mjs dist",
+    "import-data": "node scripts/import-public-data.mjs"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.24.0",
+    "d3-geo": "^3.1.1",
+    "i18n-iso-countries": "^7.14.0",
+    "topojson-client": "^3.1.0",
+    "vue": "^3.5.13",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.0",
+    "@types/geojson": "^7946.0.15",
+    "@types/topojson-client": "^3.1.5",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^2.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

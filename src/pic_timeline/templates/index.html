@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>照片足迹</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">PT</span>
+      <div>
+        <h1>照片足迹</h1>
+        <p id="source-status">正在读取照片索引</p>
+      </div>
+    </div>
+    <nav class="view-tabs" aria-label="主要视图">
+      <button class="tab-button active" type="button" data-view="timeline">时间线</button>
+      <button class="tab-button" type="button" data-view="footprints">足迹</button>
+    </nav>
+    <button id="refresh-button" class="icon-button" type="button" title="更新照片索引" aria-label="更新照片索引">↻</button>
+  </header>
+
+  <main>
+    <section id="timeline-view" class="app-view">
+      <div class="timeline-toolbar">
+        <div class="month-navigation">
+          <button id="previous-month" class="icon-button" type="button" title="上个月" aria-label="上个月">‹</button>
+          <select id="month-select" aria-label="选择月份"></select>
+          <button id="next-month" class="icon-button" type="button" title="下个月" aria-label="下个月">›</button>
+        </div>
+        <div class="toolbar-filters">
+          <label for="minimum-count">至少</label>
+          <input id="minimum-count" type="number" min="0" step="1" value="20">
+          <span>张</span>
+          <div class="segmented-control" aria-label="整理状态">
+            <button type="button" class="active" data-status="all">全部</button>
+            <button type="button" data-status="pending">未整理</button>
+            <button type="button" data-status="reviewed">已整理</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary-strip" aria-label="月份摘要">
+        <div><span>本月照片</span><strong id="stat-month-photos">0</strong></div>
+        <div><span>拍摄天数</span><strong id="stat-active-days">0</strong></div>
+        <div><span>已整理</span><strong id="stat-reviewed-days">0</strong></div>
+        <div><span>最高峰</span><strong id="stat-peak">-</strong></div>
+      </div>
+
+      <div class="timeline-layout">
+        <div class="timeline-content">
+          <section class="chart-panel" aria-labelledby="chart-heading">
+            <div class="section-heading">
+              <div>
+                <h2 id="chart-heading">每日照片数量</h2>
+                <p id="chart-caption"></p>
+              </div>
+              <span class="legend"><i></i> 已整理日期带金色标记</span>
+            </div>
+            <div id="chart-container" class="chart-container" aria-live="polite"></div>
+          </section>
+
+          <section class="high-days-panel" aria-labelledby="high-days-heading">
+            <div class="section-heading">
+              <div>
+                <h2 id="high-days-heading">高照片量日期</h2>
+                <p id="high-days-count"></p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>照片</th><th>地点</th><th>同行人</th><th>状态</th></tr></thead>
+                <tbody id="high-days-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <aside class="day-panel" aria-labelledby="day-title">
+          <div id="day-empty" class="empty-state">
+            <strong>选择一个有照片的日期</strong>
+          </div>
+          <div id="day-content" hidden>
+            <div class="day-heading">
+              <div><h2 id="day-title"></h2><p id="day-photo-count"></p></div>
+              <span id="day-status-badge" class="status-badge"></span>
+            </div>
+
+            <div id="thumbnail-grid" class="thumbnail-grid"></div>
+            <p id="thumbnail-summary" class="thumbnail-summary"></p>
+
+            <form id="annotation-form">
+              <label for="places-input">地点</label>
+              <input id="places-input" list="places-options" autocomplete="off" placeholder="例如：杭州西湖、北航">
+              <datalist id="places-options"></datalist>
+
+              <label for="people-input">同行人</label>
+              <input id="people-input" list="people-options" autocomplete="off" placeholder="多人用逗号分隔">
+              <datalist id="people-options"></datalist>
+
+              <label for="note-input">备注</label>
+              <textarea id="note-input" rows="3" maxlength="2000" placeholder="当天值得记住的事情"></textarea>
+
+              <label class="review-toggle" for="reviewed-input">
+                <input id="reviewed-input" type="checkbox">
+                <span>标记为已整理</span>
+              </label>
+
+              <div class="form-actions">
+                <button id="save-button" class="primary-button" type="submit">保存标注</button>
+                <button id="save-next-button" class="secondary-button" type="button">保存并打开下一个</button>
+              </div>
+            </form>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="footprints-view" class="app-view" hidden>
+      <div class="footprints-header">
+        <div><h2>这些年去过的地方</h2><p id="footprints-summary"></p></div>
+        <input id="footprints-search" type="search" placeholder="搜索地点或同行人" aria-label="搜索足迹">
+      </div>
+      <div class="footprints-layout">
+        <div class="table-wrap footprint-table-wrap">
+          <table>
+            <thead><tr><th>地点</th><th>到访天数</th><th>照片</th><th>年份</th><th>最近一次</th><th>同行人</th></tr></thead>
+            <tbody id="footprints-body"></tbody>
+          </table>
+          <div id="footprints-empty" class="empty-state" hidden><strong>还没有地点标注</strong></div>
+        </div>
+        <aside id="footprint-detail" class="footprint-detail">
+          <div class="empty-state"><strong>选择一个地点</strong></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

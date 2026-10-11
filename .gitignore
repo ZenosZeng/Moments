@@ -1,0 +1,67 @@
+# Generated local data
+data/*
+!data/.gitkeep
+reports/*
+!reports/.gitkeep
+exports/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm
+*.pem
+*.key
+*.local.json
+*.local.toml
+config/private.*
+.public-export-*/
+.public-import-*/
+apps/public-ui/public/data/
+apps/public-ui/public/media/
+.agents/
+local/
+*.jpg
+*.jpeg
+*.heic
+*.png
+*.webp
+*.mp4
+*.mov
+.cache/
+tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.pytest_tmp/
+tests/_tmp/
+tests/.runtime_tmp/
+.mypy_cache/
+.ruff_cache/
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml

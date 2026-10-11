@@ -1,0 +1,17 @@
+{
+  "name": "moments",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/local-ui"
+  ],
+  "scripts": {
+    "dev:local": "npm run dev -w @moments/local-ui",
+    "build:local": "npm run build -w @moments/local-ui",
+    "build": "npm run build:local",
+    "test:web": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
