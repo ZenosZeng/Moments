@@ -23,7 +23,9 @@ def test_release_only_packages_local_output(tmp_path, monkeypatch):
     (public_root / "dist" / "index.html").write_text("<h1>Demo</h1>", encoding="utf-8")
     data = root / "exports" / "public-data" / "data"
     data.mkdir(parents=True)
+    (root / "exports" / "public-data" / "media").mkdir()
     (data / "trips.json").write_text(json.dumps({"trips": []}), encoding="utf-8")
+    (root / "exports" / "public-data" / ".media-cache-version").write_text("1", encoding="utf-8")
     monkeypatch.chdir(root)
     monkeypatch.setattr(tasks, "STUDIO_ROOT", root)
     monkeypatch.setattr(tasks, "PUBLIC_ROOT", public_root)
@@ -38,7 +40,8 @@ def test_release_only_packages_local_output(tmp_path, monkeypatch):
     with zipfile.ZipFile(root / "exports" / "site.zip") as archive:
         assert archive.namelist() == ["index.html"]
     with zipfile.ZipFile(root / "exports" / "public-data.zip") as archive:
-        assert "data/trips.json" in archive.namelist()
+        assert archive.namelist() == ["data/trips.json"]
+    assert (root / "exports" / "public-data.zip.sha256").is_file()
 
 
 def test_demo_preparation_preserves_existing_data(tmp_path, monkeypatch):

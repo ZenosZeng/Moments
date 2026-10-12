@@ -1,6 +1,6 @@
 # Moments 静态前端
 
-此目录包含独立的网站源码、离线城市定位和产物审计，可作为个人站点仓库的前端来源。不包含照片标注服务；个人 JSON 与 WebP 放在被忽略的 public/data/ 和 public/media/。
+此目录包含完整的网站源码、离线城市定位和产物审计，属于 Moments 主仓库，不需要单独的前端仓库。不包含照片标注服务；个人 JSON 与 WebP 放在被忽略的 public/data/ 和 public/media/。
 
 在 Moments 根目录执行 pixi run release，可导入本地公开数据并构建完整网站。只开发静态前端时：
 
@@ -15,8 +15,8 @@ pixi run npm --prefix apps/public-ui run dev
 独立构建、检查：
 
 ```powershell
-pixi run npm --prefix apps/public-ui run build -- --base /moments-Zenos/
+pixi run npm --prefix apps/public-ui run build -- --base /Moments/
 pixi run npm --prefix apps/public-ui run audit
 ```
 
-GitHub Release 附件与 Pages 部署流程另行配置，当前没有会自动发布的 workflow。绝不要将本地数据库、私密配置或真实照片目录复制到前端发布实例。
+主仓库的 Pages 工作流仅手动触发，读取指定 Release 的公开 ZIP 和校验文件；只构建此静态前端，不启动本地服务。详见 [发布说明](../../docs/publishing.md)。绝不要将本地数据库、私密配置或真实照片目录放入静态前端。

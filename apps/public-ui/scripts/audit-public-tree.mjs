@@ -1,9 +1,10 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const textExtensions = new Set([".html", ".js", ".css", ".json", ".xml", ".txt", ".map"]);
 const forbiddenExtensions = new Set([".sqlite", ".sqlite3", ".db", ".env", ".pem", ".key", ".heic"]);
+const mediaName = /^media\/[0-9a-f]{20}(?:-thumb)?\.webp$/;
 const forbiddenKeys = new Set([
   "caption",
   "description",
@@ -36,6 +37,7 @@ async function filesBelow(directory) {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const filename = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`公开目录包含符号链接：${filename}`);
     if (entry.isDirectory()) result.push(...(await filesBelow(filename)));
     if (entry.isFile()) result.push(filename);
   }
@@ -57,29 +59,74 @@ function inspectJson(value, location = "$") {
   }
 }
 
-export async function auditPublicTree(rootPath = "dist") {
+function inspectWebp(content, filename) {
+  if (content.length < 12 || content.toString("ascii", 0, 4) !== "RIFF" ||
+      content.toString("ascii", 8, 12) !== "WEBP" || content.readUInt32LE(4) + 8 !== content.length) {
+    throw new Error(`无效 WebP 文件：${filename}`);
+  }
+  let imageFound = false;
+  for (let offset = 12; offset < content.length;) {
+    if (offset + 8 > content.length) throw new Error(`无效 WebP 数据块：${filename}`);
+    const type = content.toString("ascii", offset, offset + 4);
+    const size = content.readUInt32LE(offset + 4);
+    if (type === "EXIF" || type === "XMP ") {
+      throw new Error(`WebP 包含 EXIF/XMP 元数据：${filename}`);
+    }
+    if (!["VP8 ", "VP8L", "VP8X", "ALPH"].includes(type)) {
+      throw new Error(`WebP 包含非白名单数据块 ${type}：${filename}`);
+    }
+    imageFound ||= type === "VP8 " || type === "VP8L";
+    offset += 8 + size + (size % 2);
+    if (offset > content.length) throw new Error(`无效 WebP 数据块：${filename}`);
+  }
+  if (!imageFound) throw new Error(`WebP 缺少图像数据：${filename}`);
+}
+
+function inspectPhotoReferences(manifest, relativeFiles) {
+  for (const trip of manifest.trips ?? []) {
+    for (const photo of trip.photos ?? []) {
+      for (const key of ["src", "thumbnail"]) {
+        const value = photo[key];
+        if (typeof value !== "string" || !mediaName.test(value) || !relativeFiles.has(value)) {
+          throw new Error(`精选照片引用无效或文件缺失：${key}`);
+        }
+      }
+    }
+  }
+}
+
+export async function auditPublicTree(rootPath = "dist", { requireCityCenters = true } = {}) {
   const root = path.resolve(rootPath);
-  const rootInfo = await stat(root).catch(() => null);
-  if (!rootInfo?.isDirectory()) throw new Error(`公开目录不存在：${root}`);
+  const rootInfo = await lstat(root).catch(() => null);
+  if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) {
+    throw new Error(`公开目录不存在或为符号链接：${root}`);
+  }
 
   const files = await filesBelow(root);
   const relativeFiles = new Set(
     files.map((filename) => path.relative(root, filename).replaceAll("\\", "/"))
   );
-  for (const required of ["data/trips.json", "data/city-centers.json"]) {
+  const requiredFiles = ["data/trips.json"];
+  if (requireCityCenters) requiredFiles.push("data/city-centers.json");
+  for (const required of requiredFiles) {
     if (!relativeFiles.has(required)) throw new Error(`公开目录缺少 ${required}`);
   }
+  inspectPhotoReferences(JSON.parse(await readFile(path.join(root, "data", "trips.json"), "utf8")), relativeFiles);
 
   let textCount = 0;
   let totalBytes = 0;
   for (const filename of files) {
     const extension = path.extname(filename).toLowerCase();
-    const relative = path.relative(root, filename);
+    const relative = path.relative(root, filename).replaceAll("\\", "/");
     const info = await stat(filename);
     totalBytes += info.size;
     if (forbiddenExtensions.has(extension) || path.basename(filename).startsWith(".env")) {
       throw new Error(`公开目录包含禁止文件：${relative}`);
     }
+    if (relative.startsWith("media/") && !mediaName.test(relative)) {
+      throw new Error(`公开图片文件名不在白名单内：${relative}`);
+    }
+    if (extension === ".webp") inspectWebp(await readFile(filename), relative);
     if (!textExtensions.has(extension)) continue;
     textCount += 1;
     const content = await readFile(filename, "utf8");

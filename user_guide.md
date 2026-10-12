@@ -42,12 +42,14 @@ pixi run app
 ## 5. 本地导出
 
 ```powershell
-pixi run release --base /moments-Zenos/
+pixi run release
 ```
 
-命令显示进度，复用图片缓存，生成白名单 JSON、WebP 和缩略图，审计后构建网站。`exports/public-data.zip` 是数据包，`exports/site.zip` 是完整静态网站；均不进入 Git，不自动上传。
+命令显示进度，复用图片缓存，生成白名单 JSON、WebP 和缩略图，审计后构建网站。`exports/public-data.zip` 是数据包，`.sha256` 是校验文件，`exports/site.zip` 是完整静态网站；均不进入 Git，不自动上传。
 
 更新标注后重新执行同一命令。发布前确认允许公开的日期、同行人昵称和所有精选图。public 仓库的 Release 附件也是公开发布，不能用于备份私密数据库。
+
+网站也在 Moments 仓库发布：手动上传 ZIP 和校验文件到 `data-*` Release，再手动运行 Pages 工作流选择该版本。首次设置和更新步骤见 [发布说明](docs/publishing.md)。
 
 ## 6. 检查
 

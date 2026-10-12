@@ -36,6 +36,7 @@ try {
       errorOnExist: true
     });
   }
+  await auditPublicTree(stageRoot, { requireCityCenters: false });
   const { stdout } = await execFileAsync(
     process.env.PYTHON || "python",
     [

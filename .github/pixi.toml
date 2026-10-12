@@ -1,0 +1,14 @@
+[workspace]
+name = "moments-pages"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+nodejs = ">=26.5.0,<26.6"
+
+[pypi-dependencies]
+geonamescache = "==3.0.1"
+
+[activation.env]
+PYTHONIOENCODING = "utf-8"

@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from pic_timeline.public_package import pack_public_data
+
 
 STUDIO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_ROOT = STUDIO_ROOT / "apps" / "public-ui"
@@ -109,7 +111,6 @@ def test_all() -> None:
     _run([_npm(), "run", "test:web"], cwd=STUDIO_ROOT)
     _run([_npm(), "run", "build"], cwd=STUDIO_ROOT)
     _run_public(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py")
-    _run_public("node", "--test", "scripts/audit-public-tree.test.js")
     _run_public("npm", "test")
     _prepare_demo()
     _run_public("npm", "run", "build")
@@ -128,7 +129,7 @@ def _prepare_demo() -> None:
 
 def release_local(arguments: list[str]) -> None:
     parser = argparse.ArgumentParser(description="生成本地公开数据包与静态网站，不上传")
-    parser.add_argument("--base", default="/", help="静态网站路径，例如 /moments-Zenos/")
+    parser.add_argument("--base", default="/Moments/", help="静态网站路径，默认 /Moments/；自定义域名可用 /")
     parser.add_argument("--index", type=Path, default=Path("data/photo_index.sqlite3"))
     parser.add_argument("--annotations", type=Path, default=Path("data/annotations.sqlite3"))
     args = parser.parse_args(arguments)
@@ -159,9 +160,9 @@ def release_local(arguments: list[str]) -> None:
         shutil.rmtree(site)
     shutil.copytree(PUBLIC_ROOT / "dist", site)
     shutil.make_archive(str(exports / "site"), "zip", site)
-    shutil.make_archive(str(exports / "public-data"), "zip", exports / "public-data")
+    checksum = pack_public_data(exports / "public-data", exports / "public-data.zip")
     print(
-        "\n本地 release 完成：exports/site/、site.zip 和 public-data.zip。"
+        f"\n本地 release 完成：exports/site/、site.zip、public-data.zip 和 {checksum.name}。"
         "未执行 Git 提交、推送、Release 上传或 GitHub Pages 发布。",
         flush=True,
     )

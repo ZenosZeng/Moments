@@ -1,0 +1,92 @@
+name: Publish Moments Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_tag:
+        description: "公开数据 Release 标签，例如 data-2026-10-12"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moments-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.0
+        with:
+          pixi-version: v0.81.0
+          manifest-path: .github/pixi.toml
+          cache: false
+          locked: false
+      - name: Download selected public data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATA_TAG: ${{ inputs.data_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$DATA_TAG" =~ ^data-[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo '必须填写明确的 data-* Release 标签'
+            exit 1
+          fi
+          if [[ "$(gh release view "$DATA_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != false ]]; then
+            echo '只能使用已经公开发布的数据 Release'
+            exit 1
+          fi
+          gh release download "$DATA_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern public-data.zip --pattern public-data.zip.sha256 \
+            --dir "$RUNNER_TEMP/moments-download"
+      - name: Verify and safely extract data
+        shell: bash
+        run: |
+          pixi run --manifest-path .github/pixi.toml python "$GITHUB_WORKSPACE/src/pic_timeline/public_package.py" extract \
+            "$RUNNER_TEMP/moments-download/public-data.zip" "$RUNNER_TEMP/moments-input" \
+            --sha256 "$RUNNER_TEMP/moments-download/public-data.zip.sha256"
+      - name: Install frontend dependencies
+        run: pixi run --manifest-path .github/pixi.toml npm --prefix "$GITHUB_WORKSPACE/apps/public-ui" ci
+      - name: Audit and import public data
+        shell: bash
+        run: pixi run --manifest-path .github/pixi.toml npm --prefix "$GITHUB_WORKSPACE/apps/public-ui" run import-data -- "$RUNNER_TEMP/moments-input"
+      - name: Test public frontend
+        run: pixi run --manifest-path .github/pixi.toml npm --prefix "$GITHUB_WORKSPACE/apps/public-ui" test
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6
+      - name: Build public frontend
+        env:
+          PAGES_BASE: ${{ steps.pages.outputs.base_path }}
+        shell: bash
+        run: pixi run --manifest-path .github/pixi.toml npm --prefix "$GITHUB_WORKSPACE/apps/public-ui" run build -- --base "${PAGES_BASE}/"
+      - name: Audit final website
+        run: pixi run --manifest-path .github/pixi.toml npm --prefix "$GITHUB_WORKSPACE/apps/public-ui" run audit
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/public-ui/dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy audited website
+        id: deployment
+        uses: actions/deploy-pages@v5
