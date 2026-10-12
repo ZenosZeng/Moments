@@ -5,7 +5,6 @@ import {
   ChevronRight,
   LocateFixed,
   MapPin,
-  Users,
   X,
   ZoomIn,
   ZoomOut
@@ -15,7 +14,7 @@ import type { Feature, FeatureCollection, Geometry } from "geojson";
 import { numericToAlpha2 } from "i18n-iso-countries";
 import { feature } from "topojson-client";
 import world from "world-atlas/countries-110m.json";
-import { filterTrips, normalizedCity, uniquePeople } from "./filters";
+import { filterTrips, normalizedCity } from "./filters";
 import {
   groupJourneySegments,
   normalizePublicLabels,
@@ -60,7 +59,6 @@ const cityData = ref<PublicCityData | null>(null);
 const loading = ref(true);
 const error = ref("");
 const yearFilter = ref("");
-const personFilter = ref("");
 const selectedCity = ref("");
 const selectedCountryCode = ref("");
 const lightboxSegmentId = ref("");
@@ -77,12 +75,11 @@ const mapSvg = ref<SVGSVGElement | null>(null);
 const years = computed(() =>
   [...new Set(data.value?.trips.map((trip) => trip.year) || [])].sort((a, b) => b - a)
 );
-const people = computed(() => uniquePeople(data.value?.trips || []));
 const filteredTrips = computed(() =>
-  filterTrips(data.value?.trips || [], yearFilter.value, personFilter.value)
+  filterTrips(data.value?.trips || [], yearFilter.value)
 );
 const timelineTrips = computed(() =>
-  filterTrips(filteredTrips.value, "", "", selectedCity.value)
+  filterTrips(filteredTrips.value, "", selectedCity.value)
 );
 const segments = computed(() => groupJourneySegments(timelineTrips.value));
 const cityVisits = computed(() =>
@@ -148,10 +145,6 @@ function segmentCity(segment: JourneySegment): string {
 
 function displayPlaces(places: JourneySegment["places"]): string {
   return normalizePublicLabels(places.map((place) => place.name)).join("，");
-}
-
-function displayPeople(segment: JourneySegment): string {
-  return normalizePublicLabels(segment.people).join("、");
 }
 
 function cityColor(city: string): string {
@@ -289,7 +282,6 @@ function handleWindowKeydown(event: KeyboardEvent): void {
 
 function clearFilters(): void {
   yearFilter.value = "";
-  personFilter.value = "";
 }
 
 watch(segments, (items) => {
@@ -349,14 +341,7 @@ onBeforeUnmount(() => {
               <option v-for="year in years" :key="year" :value="String(year)">{{ year }} 年</option>
             </select>
           </label>
-          <label>
-            同行人
-            <select v-model="personFilter" aria-label="按同行人筛选">
-              <option value="">全部同行人</option>
-              <option v-for="person in people" :key="person" :value="person">{{ person }}</option>
-            </select>
-          </label>
-          <button v-if="yearFilter || personFilter" title="清除筛选" aria-label="清除年份和同行人筛选" @click="clearFilters">
+          <button v-if="yearFilter" title="清除筛选" aria-label="清除年份筛选" @click="clearFilters">
             <X :size="17" />
           </button>
         </div>
@@ -462,7 +447,6 @@ onBeforeUnmount(() => {
                 <time>{{ segment.dateLabel }}</time>
                 <strong>{{ segmentCity(segment) }}</strong>
               </div>
-              <div v-if="displayPeople(segment)" class="trip-line trip-people"><Users :size="14" />{{ displayPeople(segment) }}</div>
               <div v-if="segment.days.length === 1" class="trip-line"><MapPin :size="14" />{{ displayPlaces(segment.places) || '—' }}</div>
             </div>
             <div v-if="segment.days.length > 1" class="trip-day-galleries">

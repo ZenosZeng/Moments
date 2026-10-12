@@ -63,7 +63,7 @@ input, textarea, select { color: #182724; background: #fff; border: 1px solid #c
 input:focus, textarea:focus, select:focus { border-color: #28756a; box-shadow: 0 0 0 2px #28756a1c; }
 .field input, .field select { width: 100%; height: 38px; padding: 0 10px; }
 textarea { resize: vertical; min-height: 60px; padding: 9px 10px; line-height: 1.5; }
-.simple-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 4px 0 14px; }
+.simple-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 14px; margin: 4px 0 14px; }
 .editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .public-checkbox { display: flex; align-items: center; gap: 8px; color: #344640; font-size: 12px; cursor: pointer; }
 .public-checkbox input { width: 16px; height: 16px; accent-color: #1e6d62; }
@@ -111,7 +111,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .country-dialog-actions .primary-button { width: 170px; }
 .secondary-button { min-width: 78px; height: 40px; padding: 0 14px; color: #40514c; background: #fff; border: 1px solid #c4ceca; border-radius: 5px; font-weight: 600; }
 .record-list { margin-top: 20px; }
-.records-grid { display: grid; grid-template-columns: 132px 128px 120px minmax(260px, 1fr) 106px 66px 112px; gap: 9px; align-items: center; }
+.records-grid { display: grid; grid-template-columns: 132px 128px 120px minmax(260px, 1fr) 66px 112px; gap: 9px; align-items: center; }
 .records-heading { padding: 0 10px 7px; color: #66736f; font-size: 11px; font-weight: 700; }
 .record-journey-card { margin-bottom: 12px; overflow: hidden; background: transparent; border: 1px solid var(--journey-color); border-left-width: 5px; border-radius: 7px; box-shadow: 0 1px 2px #18322d0a; }
 .record-row { min-height: 51px; padding: 8px 9px; scroll-margin-top: 84px; transition: background-color 180ms ease, box-shadow 180ms ease; }

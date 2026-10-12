@@ -4,7 +4,7 @@
 
 一个 Moments 仓库保存全部通用代码和 Pages 工作流。数据库、原图、缓存、公开 JSON、精选图片和构建产物不进入 Git；公开数据只作为 Release 附件。
 
-**上传附件和运行 Pages 工作流都是真正的公开发布。** ZIP、照片、日期、地点和同行人昵称均可被他人下载。不要上传 SQLite、私密备注、路径配置或原图；公开 ZIP 不是标注数据库备份。
+**上传附件和运行 Pages 工作流都是真正的公开发布。** ZIP、照片、日期和地点均可被他人下载。不要上传 SQLite、私密备注、路径配置或原图；公开 ZIP 不是标注数据库备份。
 
 本地 `pixi run release` 只生成文件，不连接 GitHub、不上传、不部署。代码 push 和 Release 创建也不会触发部署。
 
@@ -31,7 +31,9 @@ pixi run release --index '..\moment-studio\data\photo_index.sqlite3' --annotatio
 | `exports/public-data.zip.sha256` | ZIP 的 SHA-256 校验和 |
 | `exports/site/`、`exports/site.zip` | 本地构建的完整静态网站 |
 
-公开记录需勾选允许公开且至少有一张精选照片。导出会复用缓存、纠正方向、缩放并删除 EXIF/GPS/XMP；ZIP 不包含缓存标记或本地数据库。上传前自行检查记录、昵称和精选照片。单个 ZIP 小于 2 GiB。
+公开记录需勾选允许公开且至少有一张精选照片。导出会复用缓存、纠正方向、缩放并删除 EXIF/GPS/XMP；ZIP 不包含缓存标记或本地数据库。上传前自行检查记录、地点和精选照片。单个 ZIP 小于 2 GiB。
+
+同行人功能已移除，公开 JSON、ZIP 和最终产物均拒绝同行人及昵称字段。旧数据版本须重新导出后才能部署；旧附件或旧 Pages 中的信息不会因此自动删除。照片画面和自由填写的地点文字仍需人工确认是否适合公开。
 
 默认静态路径为 `/Moments/`；其他仓库使用 `--base /仓库名/`，根域名使用 `--base /`。Actions 部署时会自动使用 Pages 配置的路径。
 

@@ -26,7 +26,6 @@ export interface TrailSegment {
   dateLabel: string;
   title: string;
   places: TrailPlace[];
-  people: string[];
   photos: TrailPhoto[];
   tripDays: number;
   tripIds: string[];
@@ -44,21 +43,13 @@ export interface TrailSegmentDay {
 export function filterTrailTrips(
   trips: TrailTrip[],
   year: string,
-  person: string,
   city = ""
 ): TrailTrip[] {
   const cityKey = normalizedCity(city);
   return trips.filter(
     (trip) =>
       (!year || String(trip.year) === year) &&
-      (!person || trip.people.includes(person)) &&
       (!cityKey || trip.places.some((place) => normalizedCity(place.city) === cityKey))
-  );
-}
-
-export function uniqueTrailPeople(trips: TrailTrip[]): string[] {
-  return [...new Set(trips.flatMap((trip) => trip.people))].sort((left, right) =>
-    left.localeCompare(right, "zh-CN")
   );
 }
 
@@ -162,9 +153,6 @@ export function groupTrailSegments(trips: TrailTrip[]): TrailSegment[] {
           previous.places.push(place);
         }
       }
-      previous.people = [...new Set([...previous.people, ...trip.people])].sort((left, right) =>
-        left.localeCompare(right, "zh-CN")
-      );
       previous.photos.push(...trip.photos.filter(
         (photo) => !previous.photos.some((item) => item.id === photo.id)
       ));
@@ -180,7 +168,6 @@ export function groupTrailSegments(trips: TrailTrip[]): TrailSegment[] {
       dateLabel: formatTrailDate(trip.date),
       title: segmentTitle(trip.places),
       places: [...trip.places],
-      people: [...trip.people],
       photos: [...trip.photos],
       tripDays: 1,
       tripIds: [trip.id],

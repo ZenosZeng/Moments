@@ -211,7 +211,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .trip-primary strong { min-width: 0; color: #233833; font-size: 16px; overflow-wrap: anywhere; }
 .trip-line { min-width: 0; display: flex; align-items: flex-start; gap: 7px; color: #60706b; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .trip-line svg { flex: 0 0 auto; margin-top: 1px; color: #87948f; }
-.trip-people { color: #74827e; font-size: 11px; }
 .trip-day-galleries { min-width: 0; grid-column: 2 / 5; grid-row: 1; display: grid; gap: 11px; }
 .trip-day-gallery {
   min-width: 0;
@@ -282,7 +281,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 @media (max-width: 680px) {
   .preview-controls { min-height: 0; padding: 16px; align-items: stretch; flex-direction: column; gap: 14px; }
   .preview-controls h1 { font-size: 19px; }
-  .preview-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 34px; }
+  .preview-filters { display: grid; grid-template-columns: minmax(0, 1fr) 34px; }
   .preview-filters select { width: 100%; }
   .preview-map { height: 500px; min-height: 500px; }
   .map-summary { left: 16px; right: 16px; top: 17px; }

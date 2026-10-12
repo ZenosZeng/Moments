@@ -6,12 +6,6 @@ export interface Place {
   countryName?: string;
 }
 
-export interface Person {
-  id?: number;
-  name: string;
-  publicName: string;
-}
-
 export interface FeaturedPhoto {
   relativePath: string;
   sortOrder?: number;
@@ -21,7 +15,6 @@ export interface Annotation {
   date: string;
   displayDate: string;
   places: Place[];
-  people: Person[];
   isPublic: boolean;
   featuredPhotos: FeaturedPhoto[];
   annotated: boolean;
@@ -93,7 +86,6 @@ export interface TrailTrip {
   year: number;
   title: string;
   places: TrailPlace[];
-  people: string[];
   photos: TrailPhoto[];
 }
 

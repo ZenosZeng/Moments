@@ -71,7 +71,7 @@
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>日期</th><th>照片</th><th>地点</th><th>同行人</th><th>状态</th></tr></thead>
+                <thead><tr><th>日期</th><th>照片</th><th>地点</th><th>状态</th></tr></thead>
                 <tbody id="high-days-body"></tbody>
               </table>
             </div>
@@ -96,10 +96,6 @@
               <input id="places-input" list="places-options" autocomplete="off" placeholder="例如：杭州西湖、北航">
               <datalist id="places-options"></datalist>
 
-              <label for="people-input">同行人</label>
-              <input id="people-input" list="people-options" autocomplete="off" placeholder="多人用逗号分隔">
-              <datalist id="people-options"></datalist>
-
               <label for="note-input">备注</label>
               <textarea id="note-input" rows="3" maxlength="2000" placeholder="当天值得记住的事情"></textarea>
 
@@ -121,12 +117,12 @@
     <section id="footprints-view" class="app-view" hidden>
       <div class="footprints-header">
         <div><h2>这些年去过的地方</h2><p id="footprints-summary"></p></div>
-        <input id="footprints-search" type="search" placeholder="搜索地点或同行人" aria-label="搜索足迹">
+        <input id="footprints-search" type="search" placeholder="搜索地点" aria-label="搜索足迹">
       </div>
       <div class="footprints-layout">
         <div class="table-wrap footprint-table-wrap">
           <table>
-            <thead><tr><th>地点</th><th>到访天数</th><th>照片</th><th>年份</th><th>最近一次</th><th>同行人</th></tr></thead>
+            <thead><tr><th>地点</th><th>到访天数</th><th>照片</th><th>年份</th><th>最近一次</th></tr></thead>
             <tbody id="footprints-body"></tbody>
           </table>
           <div id="footprints-empty" class="empty-state" hidden><strong>还没有地点标注</strong></div>

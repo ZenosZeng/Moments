@@ -83,7 +83,7 @@ def test_default_city_setting_uses_recorded_cities_and_persists(tmp_path: Path) 
     for capture_date, city in (("2024-05-02", "深圳"), ("2024-05-03", "上海")):
         response = client.put(
             f"/api/days/{capture_date}/annotation",
-            json={"places": [{"city": city, "name": ""}], "people": []},
+            json={"places": [{"city": city, "name": ""}]},
         )
         assert response.status_code == 200
 
@@ -117,7 +117,6 @@ def test_day_detail_returns_saved_featured_photos_before_other_photos(
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "深圳", "name": ""}],
-            "people": [],
             "featuredPhotos": [{"relativePath": "202405_a/two.jpg"}],
         },
     ).status_code == 200
@@ -135,7 +134,6 @@ def test_annotation_persists_and_footprints_aggregate(tmp_path: Path) -> None:
         "/api/days/2024-05-02/annotation",
         json={
             "places": ["杭州西湖", "杭州西湖"],
-            "people": ["朋友"],
             "note": "春天散步",
             "reviewed": True,
         },
@@ -143,7 +141,7 @@ def test_annotation_persists_and_footprints_aggregate(tmp_path: Path) -> None:
     assert response.status_code == 200
     saved = response.get_json()
     assert [item["name"] for item in saved["places"]] == ["杭州西湖"]
-    assert [item["name"] for item in saved["people"]] == ["朋友"]
+    assert "people" not in saved
     assert saved["reviewed"] is True
 
     restarted = create_app(
@@ -178,7 +176,6 @@ def test_footprints_merge_adjacent_days_in_the_same_city_and_sort_descending(
             f"/api/days/{capture_date}/annotation",
             json={
                 "places": [{"city": "深圳", "name": place}],
-                "people": ["朋友"],
                 "featuredPhotos": [{"relativePath": photo}],
                 "isPublic": True,
             },
@@ -190,7 +187,7 @@ def test_footprints_merge_adjacent_days_in_the_same_city_and_sort_descending(
     assert journeys[0]["date_label"] == "2024-05-02 至 2024-05-03"
     assert journeys[0]["city"] == "深圳"
     assert journeys[0]["places"] == ["人才公园", "莲花山"]
-    assert journeys[0]["people"] == ["朋友"]
+    assert "people" not in journeys[0]
     assert journeys[0]["photo_count"] == 3
 
 
@@ -200,7 +197,7 @@ def test_footprints_sort_separate_journeys_by_latest_date(tmp_path: Path) -> Non
     for capture_date, city in (("2024-05-02", "深圳"), ("2024-05-03", "广州")):
         assert client.put(
             f"/api/days/{capture_date}/annotation",
-            json={"places": [{"city": city, "name": ""}], "people": []},
+            json={"places": [{"city": city, "name": ""}]},
         ).status_code == 200
 
     journeys = client.get("/api/footprints").get_json()["places"]
@@ -217,7 +214,7 @@ def test_footprints_infers_country_for_legacy_city_rows(tmp_path: Path) -> None:
     client = app.test_client()
     assert client.put(
         "/api/days/2024-05-02/annotation",
-        json={"places": [{"city": "成都", "name": "玉林路"}], "people": []},
+        json={"places": [{"city": "成都", "name": "玉林路"}]},
     ).status_code == 200
 
     import sqlite3
@@ -241,7 +238,6 @@ def test_record_update_edits_metadata_without_changing_photo_facts(
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "深圳", "name": "人才公园"}],
-            "people": ["朋友"],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
             "isPublic": True,
         },
@@ -258,7 +254,6 @@ def test_record_update_edits_metadata_without_changing_photo_facts(
                     "countryCode": "CN",
                 }
             ],
-            "people": ["爱人"],
         },
     )
 
@@ -282,8 +277,6 @@ def test_record_update_edits_metadata_without_changing_photo_facts(
             "country_name": "China",
             "city": "广州",
             "places": ["北京路，珠江边"],
-            "people": ["爱人"],
-            "companion": "爱人",
             "photo_count": 2,
         }
     ]
@@ -307,7 +300,6 @@ def test_record_delete_removes_annotation_but_keeps_photo_facts(tmp_path: Path) 
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "深圳", "name": "人才公园"}],
-            "people": ["朋友"],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
         },
     ).status_code == 200
@@ -323,45 +315,12 @@ def test_record_delete_removes_annotation_but_keeps_photo_facts(tmp_path: Path) 
     assert client.delete("/api/records/2024-05-02").status_code == 404
 
 
-def test_companion_is_limited_to_one_supported_value(tmp_path: Path) -> None:
-    app, _, _ = _build_app(tmp_path)
-    client = app.test_client()
-
-    multiple = client.put(
-        "/api/days/2024-05-02/annotation",
-        json={"places": [{"city": "深圳"}], "people": ["朋友", "家人"]},
-    )
-    unsupported = client.put(
-        "/api/days/2024-05-02/annotation",
-        json={"places": [{"city": "深圳"}], "people": ["同事甲"]},
-    )
-
-    assert multiple.status_code == 400
-    assert "只能选择一项" in multiple.get_json()["error"]
-    assert unsupported.status_code == 400
-    assert "只能选择爱人" in unsupported.get_json()["error"]
-
-
-@pytest.mark.parametrize("people", [[], [""], ["空"], ["不填写"], ["无"]])
-def test_empty_companion_values_are_saved_as_no_companion(
-    tmp_path: Path, people: list[str]
-) -> None:
-    app, _, _ = _build_app(tmp_path)
-    response = app.test_client().put(
-        "/api/days/2024-05-02/annotation",
-        json={"places": [{"city": "深圳"}], "people": people},
-    )
-
-    assert response.status_code == 200
-    assert [person["name"] for person in response.get_json()["people"]] == ["无"]
-
-
 def test_annotation_rejects_date_without_indexed_photos(tmp_path: Path) -> None:
     app, _, _ = _build_app(tmp_path)
 
     response = app.test_client().put(
         "/api/days/2024-05-07/annotation",
-        json={"places": ["北京"], "people": [], "note": "", "reviewed": True},
+        json={"places": ["北京"], "note": "", "reviewed": True},
     )
 
     assert response.status_code == 404
@@ -407,7 +366,6 @@ def test_day_data_and_featured_photos_are_saved_together(tmp_path: Path) -> None
                     "city": "杭州",
                 }
             ],
-            "people": ["朋友"],
             "featuredPhotos": [
                 {"relativePath": "202405_a/one.jpg", "caption": ""}
             ],
@@ -418,7 +376,7 @@ def test_day_data_and_featured_photos_are_saved_together(tmp_path: Path) -> None
     assert annotation.get_json()["places"][0]["city"] == "杭州"
     assert annotation.get_json()["places"][0]["countryCode"] == "CN"
     assert annotation.get_json()["places"][0]["countryName"] == "China"
-    assert annotation.get_json()["people"][0]["publicName"] == "朋友"
+    assert "people" not in annotation.get_json()
     assert annotation.get_json()["featuredPhotos"][0]["relativePath"] == "202405_a/one.jpg"
     assert annotation.get_json()["isPublic"] is True
 
@@ -436,7 +394,7 @@ def test_day_data_and_featured_photos_are_saved_together(tmp_path: Path) -> None
     restarted.config.update(TESTING=True)
     restarted_day = restarted.test_client().get("/api/days/2024-05-02").get_json()
     assert restarted_day["annotation"]["places"][0]["city"] == "杭州"
-    assert restarted_day["annotation"]["people"][0]["name"] == "朋友"
+    assert "people" not in restarted_day["annotation"]
     assert restarted_day["annotation"]["featuredPhotos"] == [
         {
             "caption": "",
@@ -449,7 +407,6 @@ def test_day_data_and_featured_photos_are_saved_together(tmp_path: Path) -> None
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "杭州"}],
-            "people": [],
             "featuredPhotos": [
                 {"relativePath": "202405_a/other.jpg", "caption": ""}
             ],
@@ -467,7 +424,7 @@ def test_unknown_city_requires_country_once_and_uses_it_for_export(
 
     required = client.put(
         "/api/days/2024-05-02/annotation",
-        json={"places": [{"city": unknown_city, "name": "测试地点"}], "people": []},
+        json={"places": [{"city": unknown_city, "name": "测试地点"}]},
     )
     assert required.status_code == 422
     assert required.get_json()["code"] == "COUNTRY_REQUIRED"
@@ -485,7 +442,6 @@ def test_unknown_city_requires_country_once_and_uses_it_for_export(
                     "countryName": "中国",
                 }
             ],
-            "people": [],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
             "isPublic": True,
         },
@@ -496,7 +452,7 @@ def test_unknown_city_requires_country_once_and_uses_it_for_export(
 
     reused = client.put(
         "/api/days/2024-05-03/annotation",
-        json={"places": [{"city": unknown_city, "name": "另一个地点"}], "people": []},
+        json={"places": [{"city": unknown_city, "name": "另一个地点"}]},
     )
     assert reused.status_code == 200
     assert reused.get_json()["places"][0]["countryCode"] == "CN"
@@ -528,7 +484,6 @@ def test_trails_preview_uses_latest_public_annotations_without_export(
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "深圳", "name": "人才公园"}],
-            "people": [{"name": "朋友", "publicName": "朋友"}],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
             "isPublic": True,
         },
@@ -537,7 +492,6 @@ def test_trails_preview_uses_latest_public_annotations_without_export(
         "/api/days/2024-05-03/annotation",
         json={
             "places": [{"city": "广州", "name": ""}],
-            "people": [],
             "featuredPhotos": [{"relativePath": "202405_a/other.jpg"}],
             "isPublic": False,
         },
@@ -555,7 +509,7 @@ def test_trails_preview_uses_latest_public_annotations_without_export(
     }
     assert payload["warnings"] == []
     assert payload["trips"][0]["title"] == "深圳 · 人才公园"
-    assert payload["trips"][0]["people"] == ["朋友"]
+    assert "people" not in payload["trips"][0]
     assert payload["trips"][0]["places"][0]["mapPoint"] == pytest.approx(
         [114.0683, 22.54554]
     )
@@ -622,94 +576,87 @@ def test_annotation_schema_migration_keeps_existing_rows(tmp_path: Path) -> None
     assert migrated["featuredPhotos"] == []
 
 
-def test_companion_schema_migration_normalizes_legacy_names(tmp_path: Path) -> None:
-    path = tmp_path / "legacy-companions.sqlite3"
-    AnnotationStore(path)
+@pytest.mark.parametrize("field", ["people", "person", "companion", "publicName", "public_name"])
+@pytest.mark.parametrize("endpoint", ["annotation", "records"])
+def test_retired_identity_fields_are_rejected_without_changing_data(
+    tmp_path: Path, field: str, endpoint: str
+) -> None:
+    app, _, _ = _build_app(tmp_path)
+    client = app.test_client()
+    assert client.put(
+        "/api/days/2024-05-02/annotation",
+        json={"places": [{"city": "深圳", "name": "人才公园"}]},
+    ).status_code == 200
+    before = client.get("/api/days/2024-05-02").get_json()["annotation"]
+    payload = {field: ["隐私测试标记"]}
+    if endpoint == "annotation":
+        response = client.put("/api/days/2024-05-02/annotation", json=payload)
+    else:
+        response = client.patch("/api/records/2024-05-02", json=payload)
+    assert response.status_code == 400
+    assert "不再支持" in response.get_json()["error"]
+    assert client.get("/api/days/2024-05-02").get_json()["annotation"] == before
+
+
+def test_legacy_identity_tables_are_removed_without_losing_other_data(tmp_path: Path) -> None:
     import sqlite3
 
-    legacy_names = ["爸爸", "妈妈", "宝宝", "室友"]
-    with sqlite3.connect(path) as connection:
-        for index, name in enumerate(legacy_names, start=1):
-            capture_date = f"2024-01-{index:02d}"
-            connection.execute(
-                """
-                INSERT INTO day_annotations(
-                    capture_date, display_date, created_at, updated_at
-                ) VALUES(?, ?, '2024-01-01', '2024-01-01')
-                """,
-                (capture_date, capture_date),
-            )
-            person_id = connection.execute(
-                """
-                INSERT INTO people(name, normalized_name, public_name, created_at)
-                VALUES(?, ?, ?, '2024-01-01')
-                RETURNING id
-                """,
-                (name, name.casefold(), name),
-            ).fetchone()[0]
-            connection.execute(
-                "INSERT INTO day_people(capture_date, person_id) VALUES(?, ?)",
-                (capture_date, person_id),
-            )
-
-    migrated = AnnotationStore(path)
-    assert [migrated.get(f"2024-01-{day:02d}")["people"][0]["name"] for day in range(1, 5)] == [
-        "家人",
-        "家人",
-        "爱人",
-        "同学",
-    ]
-    assert {person["name"] for person in migrated.options()["people"]}.isdisjoint(
-        legacy_names
-    )
-
-
-def test_vienna_companion_migration_runs_once(tmp_path: Path) -> None:
-    path = tmp_path / "vienna-companions.sqlite3"
-    store = AnnotationStore(path)
-    place = {
-        "name": "美泉宫",
-        "city": "维也纳",
-        "countryCode": "AT",
-        "countryName": "Austria",
-        "latitude": None,
-        "longitude": None,
-    }
-    store.save(
-        "2024-01-01",
-        display_date="2024-01-01",
-        places=[place],
-        people=[{"name": "朋友", "publicName": "朋友"}],
-        trip_title="",
-        itinerary="",
-        note="",
-        public_description="",
-        is_public=True,
-        reviewed=False,
-    )
-
-    import sqlite3
-
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            "DELETE FROM app_settings WHERE key = 'migration_vienna_companion_v1'"
+    app, _, annotations = _build_app(tmp_path)
+    client = app.test_client()
+    assert client.put(
+        "/api/days/2024-05-02/annotation",
+        json={
+            "places": [{"city": "深圳", "name": "人才公园"}],
+            "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
+        },
+    ).status_code == 200
+    assert client.put("/api/settings", json={"defaultCity": "深圳"}).status_code == 200
+    before = client.get("/api/days/2024-05-02").get_json()["annotation"]
+    with sqlite3.connect(annotations) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE people (
+                id INTEGER PRIMARY KEY, name TEXT, normalized_name TEXT,
+                public_name TEXT, created_at TEXT
+            );
+            CREATE TABLE day_people (
+                capture_date TEXT REFERENCES day_annotations(capture_date),
+                person_id INTEGER REFERENCES people(id)
+            );
+            INSERT INTO people VALUES(1, '隐私测试标记', 'test', '隐私公开标记', '2024-01-01');
+            INSERT INTO day_people VALUES('2024-05-02', 1);
+            INSERT INTO app_settings VALUES('migration_vienna_companion_v1', 'complete', '2024-01-01');
+            """
         )
-    migrated = AnnotationStore(path)
-    assert migrated.get("2024-01-01")["people"][0]["name"] == "同事"
 
-    migrated.save(
-        "2024-01-01",
-        display_date="2024-01-01",
-        places=[place],
-        people=[{"name": "爱人", "publicName": "爱人"}],
-        trip_title="",
-        itinerary="",
-        note="",
-        public_description="",
-        is_public=True,
-        reviewed=False,
+    manifest = export_public(
+        tmp_path / "photo-index.sqlite3", annotations,
+        tmp_path / "legacy-export", dry_run=True,
     )
-    assert AnnotationStore(path).get("2024-01-01")["people"][0]["name"] == "爱人"
+    store = AnnotationStore(annotations)
+    assert store.get("2024-05-02") == before
+    assert AnnotationStore(annotations).get("2024-05-02") == before
+    assert store.settings()["defaultCity"] == "深圳"
+    assert "people" not in store.options()
+    with sqlite3.connect(annotations) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert {"people", "day_people"}.isdisjoint(tables)
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    for endpoint in [
+        "/api/overview?month=2024-05", "/api/days/2024-05-02", "/api/options",
+        "/api/footprints", "/api/trails-preview",
+    ]:
+        payload = client.get(endpoint).get_json()
+        text = json.dumps(payload, ensure_ascii=False)
+        assert '"people"' not in text
+        assert '"companion"' not in text
+        assert "隐私测试标记" not in text
+        assert "隐私公开标记" not in text
+    exported = json.dumps(manifest, ensure_ascii=False)
+    assert '"people"' not in exported
+    assert "隐私公开标记" not in exported
+    assert manifest["trips"][0]["places"][0]["city"] == "深圳"
+    assert len(manifest["trips"][0]["photos"]) == 1
 
 
 def test_public_export_is_a_strict_whitelist_and_strips_metadata(tmp_path: Path) -> None:
@@ -722,7 +669,6 @@ def test_public_export_is_a_strict_whitelist_and_strips_metadata(tmp_path: Path)
                 "city": "杭州",
             }
         ],
-        "people": ["朋友"],
         "tripTitle": "旧标题不应导出",
         "itinerary": "旧行程不应导出",
         "publicDescription": "旧公开说明不应导出",
@@ -746,7 +692,6 @@ def test_public_export_is_a_strict_whitelist_and_strips_metadata(tmp_path: Path)
                         "city": "北京",
                     }
                 ],
-                "people": [],
                 "isPublic": True,
                 "featuredPhotos": [],
             },
@@ -770,7 +715,7 @@ def test_public_export_is_a_strict_whitelist_and_strips_metadata(tmp_path: Path)
         "countries": 1,
         "featuredPhotos": 1,
     }
-    assert manifest["trips"][0]["people"] == ["朋友"]
+    assert "people" not in manifest["trips"][0]
     assert manifest["trips"][0]["title"] == "杭州 · 西湖"
     assert manifest["trips"][0]["places"][0]["city"] == "杭州"
     assert manifest["trips"][0]["places"][0]["countryCode"] == "CN"
@@ -825,7 +770,6 @@ def test_public_export_reuses_unchanged_webp_cache(
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "深圳", "name": ""}],
-            "people": [],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
             "isPublic": True,
         },
@@ -874,7 +818,6 @@ def test_public_checkbox_controls_export_and_shenzhen_can_be_default(
         "/api/days/2024-05-02/annotation",
         json={
             "places": [common_place],
-            "people": [],
             "featuredPhotos": [
                 {"relativePath": "202405_a/one.jpg", "caption": ""}
             ],
@@ -885,7 +828,6 @@ def test_public_checkbox_controls_export_and_shenzhen_can_be_default(
         "/api/days/2024-05-03/annotation",
         json={
             "places": [common_place],
-            "people": [],
             "featuredPhotos": [
                 {"relativePath": "202405_a/other.jpg", "caption": ""}
             ],
@@ -910,7 +852,6 @@ def test_public_export_allows_optional_location_fields(tmp_path: Path) -> None:
         "/api/days/2024-05-02/annotation",
         json={
             "places": [{"city": "", "name": "玉林路"}],
-            "people": [],
             "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}],
             "isPublic": True,
         },
@@ -924,7 +865,7 @@ def test_public_export_allows_optional_location_fields(tmp_path: Path) -> None:
     assert manifest["summary"]["countries"] == 0
     assert manifest["trips"][0]["title"] == "玉林路"
     assert manifest["trips"][0]["places"][0]["countryCode"] == ""
-    assert manifest["trips"][0]["people"] == []
+    assert "people" not in manifest["trips"][0]
 
 
 def test_port_check_detects_an_existing_server(capsys: pytest.CaptureFixture[str]) -> None:
@@ -944,7 +885,8 @@ def test_port_check_detects_an_existing_server(capsys: pytest.CaptureFixture[str
 
 @pytest.mark.parametrize(
     "forbidden_field",
-    ["latitude", "longitude", "itinerary", "description", "caption"],
+    ["latitude", "longitude", "itinerary", "description", "caption",
+     "people", "person", "companion", "publicName", "public_name"],
 )
 def test_public_audit_rejects_removed_fields(
     tmp_path: Path, forbidden_field: str

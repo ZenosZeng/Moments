@@ -4,7 +4,7 @@ const state = {
   statusFilter: "all",
   minimumCount: 20,
   footprints: [],
-  options: { places: [], people: [] },
+  options: { places: [] },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -119,9 +119,8 @@ function renderChart() {
       tabindex: day.count ? "0" : "-1",
     });
     const placeNames = day.annotation.places.map((place) => place.name).join("、");
-    const peopleNames = day.annotation.people.map((person) => person.name).join("、");
     const title = svgElement("title");
-    title.textContent = `${day.date}：${day.count} 张${placeNames ? ` · ${placeNames}` : ""}${peopleNames ? ` · ${peopleNames}` : ""}`;
+    title.textContent = `${day.date}：${day.count} 张${placeNames ? ` · ${placeNames}` : ""}`;
     bar.append(title);
     if (day.count) {
       const select = () => loadDay(day.date);
@@ -161,7 +160,7 @@ function renderHighDays() {
   if (!rows.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 5;
+    cell.colSpan = 4;
     cell.textContent = "当前筛选条件下没有日期";
     cell.style.color = "#69716c";
     row.append(cell);
@@ -175,7 +174,6 @@ function renderHighDays() {
       day.date,
       `${day.count} 张`,
       day.annotation.places.map((place) => place.name).join("、") || "-",
-      day.annotation.people.map((person) => person.name).join("、") || "-",
     ];
     values.forEach((value) => {
       const cell = document.createElement("td");
@@ -208,7 +206,6 @@ async function loadDay(captureDate) {
   badge.textContent = detail.annotation.reviewed ? "已整理" : "未整理";
   badge.classList.toggle("reviewed", detail.annotation.reviewed);
   $("#places-input").value = detail.annotation.places.map((place) => place.name).join("，");
-  $("#people-input").value = detail.annotation.people.map((person) => person.name).join("，");
   $("#note-input").value = detail.annotation.note;
   $("#reviewed-input").checked = detail.annotation.reviewed;
   renderThumbnails(detail);
@@ -245,7 +242,6 @@ async function saveCurrent(openNext = false) {
   if (!state.selectedDate) return;
   const payload = {
     places: splitNames($("#places-input").value),
-    people: splitNames($("#people-input").value),
     note: $("#note-input").value,
     reviewed: $("#reviewed-input").checked,
   };
@@ -280,7 +276,6 @@ async function loadOptions() {
     });
   };
   fill("#places-options", state.options.places);
-  fill("#people-options", state.options.people);
 }
 
 async function loadFootprints() {
@@ -292,7 +287,7 @@ async function loadFootprints() {
 function renderFootprints() {
   const query = $("#footprints-search").value.trim().casefold?.() || $("#footprints-search").value.trim().toLowerCase();
   const rows = state.footprints.filter((place) => {
-    const haystack = `${place.name} ${place.people.join(" ")} ${place.years.join(" ")}`.toLowerCase();
+    const haystack = `${place.name} ${place.years.join(" ")}`.toLowerCase();
     return !query || haystack.includes(query);
   });
   $("#footprints-summary").textContent = `${state.footprints.length} 个地点`;
@@ -301,7 +296,7 @@ function renderFootprints() {
   body.replaceChildren();
   rows.forEach((place) => {
     const row = document.createElement("tr");
-    [place.name, place.visit_days, place.photo_count.toLocaleString(), place.years.join("、"), place.last_visit, place.people.join("、") || "-"].forEach((value) => {
+    [place.name, place.visit_days, place.photo_count.toLocaleString(), place.years.join("、"), place.last_visit].forEach((value) => {
       const cell = document.createElement("td");
       cell.textContent = value;
       row.append(cell);
@@ -337,17 +332,6 @@ function renderFootprintDetail(place) {
     list.append(item);
   });
   panel.append(title, summary, list);
-  if (place.people.length) {
-    const tags = document.createElement("div");
-    tags.className = "tag-list";
-    place.people.forEach((name) => {
-      const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = name;
-      tags.append(tag);
-    });
-    panel.append(tags);
-  }
 }
 
 function switchView(view) {

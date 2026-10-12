@@ -28,19 +28,7 @@ from PIL import Image, ImageOps
 
 from .analysis import find_source_root, scan_archive
 from .city_country import country_from_code, infer_city
-
-
-COMPANION_OPTIONS = ("爱人", "家人", "亲人", "同学", "同事", "朋友", "无")
-COMPANION_ALIASES = {
-    "爸爸": "家人",
-    "妈妈": "家人",
-    "爸爸妈妈": "家人",
-    "宝宝": "爱人",
-    "室友": "同学",
-    "空": "无",
-    "不填写": "无",
-    "未填写": "无",
-}
+from .public_package import PRIVATE_IDENTITY_FIELDS
 
 
 class CountryRequiredError(ValueError):
@@ -121,24 +109,9 @@ def _clean_places(values: object) -> list[dict[str, Any]]:
     return result
 
 
-def _clean_people(values: object) -> list[dict[str, str]]:
-    if not isinstance(values, list):
-        raise ValueError("同行人必须是数组")
-    result: list[dict[str, str]] = []
-    for value in values:
-        item = {"name": value, "publicName": value} if isinstance(value, str) else value
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise ValueError("同行人格式无效")
-        name = item["name"].strip()
-        name = COMPANION_ALIASES.get(name, name)
-        if not name:
-            continue
-        if name not in COMPANION_OPTIONS:
-            raise ValueError("同行人只能选择爱人、家人、亲人、同学、同事、朋友或无")
-        if result:
-            raise ValueError("同行人只能选择一项")
-        result.append({"name": name, "publicName": name})
-    return result or [{"name": "无", "publicName": "无"}]
+def _reject_private_fields(payload: dict[str, Any]) -> None:
+    if PRIVATE_IDENTITY_FIELDS & payload.keys():
+        raise ValueError("不再支持同行人字段，请刷新页面")
 
 
 def _clean_text(payload: dict[str, Any], key: str, label: str, limit: int) -> str:
@@ -371,26 +344,13 @@ class AnnotationStore:
                     longitude REAL,
                     created_at TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS people (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    normalized_name TEXT NOT NULL UNIQUE,
-                    public_name TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS day_places (
                     capture_date TEXT NOT NULL REFERENCES day_annotations(capture_date) ON DELETE CASCADE,
                     place_id INTEGER NOT NULL REFERENCES places(id),
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY(capture_date, place_id)
                 );
-                CREATE TABLE IF NOT EXISTS day_people (
-                    capture_date TEXT NOT NULL REFERENCES day_annotations(capture_date) ON DELETE CASCADE,
-                    person_id INTEGER NOT NULL REFERENCES people(id),
-                    PRIMARY KEY(capture_date, person_id)
-                );
                 CREATE INDEX IF NOT EXISTS idx_day_places_place ON day_places(place_id);
-                CREATE INDEX IF NOT EXISTS idx_day_people_person ON day_people(person_id);
                 CREATE TABLE IF NOT EXISTS app_settings (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL DEFAULT '',
@@ -447,9 +407,6 @@ class AnnotationStore:
             )
             self._ensure_column(connection, "places", "latitude", "REAL")
             self._ensure_column(connection, "places", "longitude", "REAL")
-            self._ensure_column(
-                connection, "people", "public_name", "TEXT NOT NULL DEFAULT ''"
-            )
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS day_featured_photos (
@@ -463,127 +420,14 @@ class AnnotationStore:
                     ON day_featured_photos(capture_date, sort_order);
                 """
             )
-            self._migrate_companions(connection)
-            self._ensure_default_companions(connection)
-            self._migrate_vienna_companions(connection)
-
-    @staticmethod
-    def _migrate_companions(connection: sqlite3.Connection) -> None:
-        timestamp = _now()
-        for legacy_name, canonical_name in COMPANION_ALIASES.items():
-            legacy = connection.execute(
-                "SELECT id FROM people WHERE normalized_name = ?",
-                (legacy_name.casefold(),),
-            ).fetchone()
-            if legacy is None:
-                continue
+            # Retire only the legacy companion tables; other annotations stay intact.
+            connection.execute("PRAGMA secure_delete = ON")
+            connection.execute("DROP TABLE IF EXISTS day_people")
+            connection.execute("DROP TABLE IF EXISTS people")
             connection.execute(
-                """
-                INSERT INTO people(name, normalized_name, public_name, created_at)
-                VALUES(?, ?, ?, ?)
-                ON CONFLICT(normalized_name) DO UPDATE SET
-                    name = excluded.name,
-                    public_name = excluded.public_name
-                """,
-                (canonical_name, canonical_name.casefold(), canonical_name, timestamp),
+                "DELETE FROM app_settings WHERE key = ?",
+                ("migration_vienna_companion_v1",),
             )
-            canonical_id = int(
-                connection.execute(
-                    "SELECT id FROM people WHERE normalized_name = ?",
-                    (canonical_name.casefold(),),
-                ).fetchone()[0]
-            )
-            legacy_id = int(legacy["id"])
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO day_people(capture_date, person_id)
-                SELECT capture_date, ? FROM day_people WHERE person_id = ?
-                """,
-                (canonical_id, legacy_id),
-            )
-            connection.execute("DELETE FROM day_people WHERE person_id = ?", (legacy_id,))
-            connection.execute("DELETE FROM people WHERE id = ?", (legacy_id,))
-
-    @staticmethod
-    def _ensure_default_companions(connection: sqlite3.Connection) -> None:
-        timestamp = _now()
-        connection.execute(
-            """
-            INSERT INTO people(name, normalized_name, public_name, created_at)
-            VALUES('无', '无', '无', ?)
-            ON CONFLICT(normalized_name) DO UPDATE SET
-                name = excluded.name,
-                public_name = excluded.public_name
-            """,
-            (timestamp,),
-        )
-        no_companion_id = int(
-            connection.execute(
-                "SELECT id FROM people WHERE normalized_name = '无'"
-            ).fetchone()[0]
-        )
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO day_people(capture_date, person_id)
-            SELECT day_annotations.capture_date, ?
-            FROM day_annotations
-            WHERE NOT EXISTS (
-                SELECT 1 FROM day_people
-                WHERE day_people.capture_date = day_annotations.capture_date
-            )
-            """,
-            (no_companion_id,),
-        )
-
-    @staticmethod
-    def _migrate_vienna_companions(connection: sqlite3.Connection) -> None:
-        migration_key = "migration_vienna_companion_v1"
-        if connection.execute(
-            "SELECT 1 FROM app_settings WHERE key = ?", (migration_key,)
-        ).fetchone():
-            return
-        timestamp = _now()
-        connection.execute(
-            """
-            INSERT INTO people(name, normalized_name, public_name, created_at)
-            VALUES('同事', '同事', '同事', ?)
-            ON CONFLICT(normalized_name) DO UPDATE SET
-                name = excluded.name,
-                public_name = excluded.public_name
-            """,
-            (timestamp,),
-        )
-        coworker_id = int(
-            connection.execute(
-                "SELECT id FROM people WHERE normalized_name = '同事'"
-            ).fetchone()[0]
-        )
-        vienna_dates = [
-            str(row["capture_date"])
-            for row in connection.execute(
-                """
-                SELECT DISTINCT day_places.capture_date
-                FROM day_places
-                JOIN places ON places.id = day_places.place_id
-                WHERE TRIM(places.city_name) = '维也纳'
-                """
-            )
-        ]
-        for capture_date in vienna_dates:
-            connection.execute(
-                "DELETE FROM day_people WHERE capture_date = ?", (capture_date,)
-            )
-            connection.execute(
-                "INSERT INTO day_people(capture_date, person_id) VALUES(?, ?)",
-                (capture_date, coworker_id),
-            )
-        connection.execute(
-            """
-            INSERT INTO app_settings(key, value, updated_at)
-            VALUES(?, 'complete', ?)
-            """,
-            (migration_key, timestamp),
-        )
 
     @staticmethod
     def _ensure_column(
@@ -634,35 +478,12 @@ class AnnotationStore:
             ).fetchone()[0]
         )
 
-    @staticmethod
-    def _person_id(
-        connection: sqlite3.Connection, person: dict[str, str], timestamp: str
-    ) -> int:
-        normalized = person["name"].casefold()
-        connection.execute(
-            """
-            INSERT INTO people(name, normalized_name, public_name, created_at)
-            VALUES(?, ?, ?, ?)
-            ON CONFLICT(normalized_name) DO UPDATE SET
-                name = excluded.name,
-                public_name = CASE WHEN excluded.public_name <> ''
-                    THEN excluded.public_name ELSE people.public_name END
-            """,
-            (person["name"], normalized, person["publicName"], timestamp),
-        )
-        return int(
-            connection.execute(
-                "SELECT id FROM people WHERE normalized_name = ?", (normalized,)
-            ).fetchone()[0]
-        )
-
     def save(
         self,
         capture_date: str,
         *,
         display_date: str,
         places: list[dict[str, Any]],
-        people: list[dict[str, str]],
         trip_title: str,
         itinerary: str,
         note: str,
@@ -687,7 +508,6 @@ class AnnotationStore:
             if not any(
                 (
                     places,
-                    people,
                     trip_title,
                     itinerary,
                     note,
@@ -738,20 +558,11 @@ class AnnotationStore:
             connection.execute(
                 "DELETE FROM day_places WHERE capture_date = ?", (capture_date,)
             )
-            connection.execute(
-                "DELETE FROM day_people WHERE capture_date = ?", (capture_date,)
-            )
             for index, place in enumerate(places):
                 place_id = self._place_id(connection, place, timestamp)
                 connection.execute(
                     "INSERT INTO day_places(capture_date, place_id, sort_order) VALUES(?, ?, ?)",
                     (capture_date, place_id, index),
-                )
-            for person in people:
-                person_id = self._person_id(connection, person, timestamp)
-                connection.execute(
-                    "INSERT INTO day_people(capture_date, person_id) VALUES(?, ?)",
-                    (capture_date, person_id),
                 )
             if featured_photos is not None:
                 connection.execute(
@@ -793,19 +604,6 @@ class AnnotationStore:
                 "DELETE FROM day_featured_photos WHERE capture_date = ?",
                 (capture_date,),
             )
-            no_companion_id = self._person_id(
-                connection, {"name": "无", "publicName": "无"}, timestamp
-            )
-            connection.execute(
-                """
-                INSERT INTO day_people(capture_date, person_id)
-                SELECT ?, ?
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM day_people WHERE capture_date = ?
-                )
-                """,
-                (capture_date, no_companion_id, capture_date),
-            )
             for sort_order, photo in enumerate(photos):
                 connection.execute(
                     """
@@ -828,7 +626,6 @@ class AnnotationStore:
             "date": capture_date,
             "displayDate": capture_date,
             "places": [],
-            "people": [],
             "tripTitle": "",
             "itinerary": "",
             "note": "",
@@ -868,23 +665,6 @@ class AnnotationStore:
                     (capture_date,),
                 )
             ]
-            people = [
-                {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "publicName": item["public_name"],
-                }
-                for item in connection.execute(
-                    """
-                    SELECT people.id, people.name, people.public_name
-                    FROM day_people
-                    JOIN people ON people.id = day_people.person_id
-                    WHERE day_people.capture_date = ?
-                    ORDER BY people.name
-                    """,
-                    (capture_date,),
-                )
-            ]
             featured = [
                 {
                     "relativePath": item["relative_path"],
@@ -905,7 +685,6 @@ class AnnotationStore:
             "date": capture_date,
             "displayDate": str(row["display_date"] or capture_date),
             "places": places,
-            "people": people,
             "tripTitle": row["trip_title"],
             "itinerary": row["itinerary"],
             "note": row["note"],
@@ -1030,16 +809,7 @@ class AnnotationStore:
                     """
                 )
             ]
-            people = [
-                dict(row)
-                for row in connection.execute(
-                    """
-                    SELECT id, name, public_name AS publicName
-                    FROM people ORDER BY normalized_name
-                    """
-                )
-            ]
-        return {"places": places, "people": people}
+        return {"places": places}
 
 
 class RefreshService:
@@ -1339,11 +1109,11 @@ def create_app(
         payload = request.get_json(silent=False)
         if not isinstance(payload, dict):
             raise ValueError("请求内容必须是 JSON 对象")
+        _reject_private_fields(payload)
         current = annotations.get(capture_date)
         display_date = str(payload.get("displayDate", current["displayDate"])).strip()
         _parse_date(display_date)
         places = enrich_places(payload.get("places", []))
-        people = _clean_people(payload.get("people", []))
         trip_title = _clean_text(payload, "tripTitle", "行程标题", 120)
         itinerary = _clean_text(payload, "itinerary", "行程", 4000)
         note = _clean_text(payload, "note", "私人备注", 4000)
@@ -1366,7 +1136,6 @@ def create_app(
             capture_date,
             display_date=display_date,
             places=places,
-            people=people,
             trip_title=trip_title,
             itinerary=itinerary,
             note=note,
@@ -1386,15 +1155,14 @@ def create_app(
         payload = request.get_json(silent=False)
         if not isinstance(payload, dict):
             raise ValueError("请求内容必须是 JSON 对象")
+        _reject_private_fields(payload)
         display_date = str(payload.get("displayDate", current["displayDate"])).strip()
         _parse_date(display_date)
         places = enrich_places(payload.get("places", current["places"]))
-        people = _clean_people(payload.get("people", current["people"]))
         saved = annotations.save(
             capture_date,
             display_date=display_date,
             places=places,
-            people=people,
             trip_title=current["tripTitle"],
             itinerary=current["itinerary"],
             note=current["note"],
@@ -1476,11 +1244,6 @@ def create_app(
                 else:
                     country_code = inferred_country.code
                     country_name = inferred_country.name
-            people = [
-                str(person["name"] or "").strip()
-                for person in annotation["people"]
-                if str(person["name"] or "").strip()
-            ]
             days.append(
                 {
                     "capture_date": annotation["date"],
@@ -1495,8 +1258,6 @@ def create_app(
                             if str(place["name"] or "").strip()
                         }
                     ),
-                    "people": people,
-                    "companion": people[0] if people else "",
                     "photo_count": counts.get(annotation["date"], 0),
                 }
             )
@@ -1519,7 +1280,6 @@ def create_app(
             if is_adjacent:
                 previous["end_date"] = day["display_date"]
                 previous["places"].update(day["places"])
-                previous["people"].update(day["people"])
                 previous["photo_count"] += day["photo_count"]
                 previous["days"].append(day)
                 continue
@@ -1531,7 +1291,6 @@ def create_app(
                     "country_name": day["country_name"],
                     "city": day["city"],
                     "places": set(day["places"]),
-                    "people": set(day["people"]),
                     "photo_count": day["photo_count"],
                     "days": [day],
                 }
@@ -1553,7 +1312,6 @@ def create_app(
                     "country_name": journey["country_name"],
                     "city": journey["city"],
                     "places": sorted(journey["places"]),
-                    "people": sorted(journey["people"]),
                     "photo_count": journey["photo_count"],
                     "days": list(reversed(journey["days"])),
                 }
@@ -1645,11 +1403,6 @@ def create_app(
                     "title": " · ".join(part for part in title_parts if part)
                     or "照片记录",
                     "places": places,
-                    "people": [
-                        person["publicName"]
-                        for person in annotation["people"]
-                        if person["publicName"] and person["publicName"] != "无"
-                    ],
                     "photos": photos,
                 }
             )

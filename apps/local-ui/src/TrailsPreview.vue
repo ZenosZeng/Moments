@@ -6,7 +6,6 @@ import {
   CircleAlert,
   LocateFixed,
   MapPin,
-  Users,
   X,
   ZoomIn,
   ZoomOut
@@ -24,8 +23,7 @@ import {
   groupTrailSegments,
   normalizedCity,
   normalizeTrailLabels,
-  trailCityColor as cityColor,
-  uniqueTrailPeople
+  trailCityColor as cityColor
 } from "./trails";
 import type { TrailSegment } from "./trails";
 import type { TrailsPreviewData } from "./types";
@@ -56,7 +54,6 @@ const data = ref<TrailsPreviewData | null>(null);
 const loading = ref(true);
 const error = ref("");
 const yearFilter = ref("");
-const personFilter = ref("");
 const selectedCity = ref("");
 const selectedCountryCode = ref("");
 const lightboxSegmentId = ref("");
@@ -73,12 +70,11 @@ const mapSvg = ref<SVGSVGElement | null>(null);
 const years = computed(() =>
   [...new Set(data.value?.trips.map((trip) => trip.year) || [])].sort((a, b) => b - a)
 );
-const people = computed(() => uniqueTrailPeople(data.value?.trips || []));
 const filteredTrips = computed(() =>
-  filterTrailTrips(data.value?.trips || [], yearFilter.value, personFilter.value)
+  filterTrailTrips(data.value?.trips || [], yearFilter.value)
 );
 const timelineTrips = computed(() =>
-  filterTrailTrips(filteredTrips.value, "", "", selectedCity.value)
+  filterTrailTrips(filteredTrips.value, "", selectedCity.value)
 );
 const segments = computed(() => groupTrailSegments(timelineTrips.value));
 const cityVisits = computed(() => aggregateCityVisits(filteredTrips.value));
@@ -149,10 +145,6 @@ function segmentCity(segment: TrailSegment): string {
 
 function displayPlaces(places: TrailSegment["places"]): string {
   return normalizeTrailLabels(places.map((place) => place.name)).join("，");
-}
-
-function displayPeople(segment: TrailSegment): string {
-  return normalizeTrailLabels(segment.people).join("、");
 }
 
 function openRecord(captureDate: string): void {
@@ -305,8 +297,7 @@ onBeforeUnmount(closePhoto);
       </div>
       <div class="preview-filters">
         <label>年份<select v-model="yearFilter"><option value="">全部年份</option><option v-for="year in years" :key="year" :value="String(year)">{{ year }} 年</option></select></label>
-        <label>同行人<select v-model="personFilter"><option value="">全部同行人</option><option v-for="person in people" :key="person" :value="person">{{ person }}</option></select></label>
-        <button v-if="yearFilter || personFilter" title="清除筛选" @click="yearFilter = ''; personFilter = ''"><X :size="17" /></button>
+        <button v-if="yearFilter" title="清除筛选" @click="yearFilter = ''"><X :size="17" /></button>
       </div>
     </section>
 
@@ -418,7 +409,6 @@ onBeforeUnmount(closePhoto);
               <time>{{ segment.dateLabel }}</time>
               <strong>{{ segmentCity(segment) }}</strong>
             </div>
-            <div v-if="displayPeople(segment)" class="trip-line trip-people"><Users :size="14" />{{ displayPeople(segment) }}</div>
             <div v-if="segment.days.length === 1" class="trip-line"><MapPin :size="14" />{{ displayPlaces(segment.places) || '—' }}</div>
           </div>
           <div v-if="segment.days.length > 1" class="trip-day-galleries">
@@ -500,8 +490,6 @@ onBeforeUnmount(closePhoto);
 .trip-primary { min-width: 0; min-height: 21px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 11px; }
 .trip-primary time { flex: 0 0 auto; color: #74827e; font-size: 11px; }
 .trip-primary strong { min-width: 0; color: #233833; font-size: 16px; overflow-wrap: anywhere; }
-.trip-people { color: #74827e; font-size: 11px; }
-.trip-people svg { color: #87948f; }
 .trip-line { min-width: 0; display: flex; align-items: flex-start; gap: 7px; color: #60706b; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .trip-line svg { flex: 0 0 auto; margin-top: 1px; color: #87948f; }
 .trip-day-galleries { min-width: 0; grid-column: 2 / 5; grid-row: 1; display: grid; gap: 11px; }

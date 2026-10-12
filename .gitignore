@@ -34,6 +34,7 @@ local/
 *.jpeg
 *.heic
 *.png
+!docs/assets/readme-cover.png
 *.webp
 *.mp4
 *.mov

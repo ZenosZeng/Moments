@@ -103,3 +103,10 @@ test("rejects private fields and databases", async () => {
   await writeFile(path.join(root, "annotations.sqlite3"), "private");
   await expect(auditPublicTree(root)).rejects.toThrow("禁止文件");
 });
+
+test.each(["people", "companion", "publicName", "public_name", "personId"])(
+  "rejects retired identity fields anywhere in the manifest: %s", async (field) => {
+    const root = await publicTree({ trips: [{ places: [{ [field]: ["隐私测试标记"] }] }] });
+    await expect(auditPublicTree(root)).rejects.toThrow("禁止字段");
+  }
+);

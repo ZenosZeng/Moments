@@ -19,11 +19,13 @@ from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from .city_country import country_from_code, infer_country
+from .public_package import PRIVATE_IDENTITY_FIELDS
 from .web import AnnotationStore
 
 register_heif_opener()
 
 FORBIDDEN_JSON_FIELDS = {
+    *PRIVATE_IDENTITY_FIELDS,
     "caption",
     "description",
     "itinerary",
@@ -173,24 +175,6 @@ def _places(connection: sqlite3.Connection, capture_date: str) -> list[dict[str,
             JOIN places ON places.id = day_places.place_id
             WHERE day_places.capture_date = ?
             ORDER BY day_places.sort_order, places.normalized_name
-            """,
-            (capture_date,),
-        )
-    ]
-
-
-def _people(connection: sqlite3.Connection, capture_date: str) -> list[str]:
-    return [
-        row["public_name"]
-        for row in connection.execute(
-            """
-            SELECT people.public_name
-            FROM day_people
-            JOIN people ON people.id = day_people.person_id
-            WHERE day_people.capture_date = ?
-              AND people.public_name <> ''
-              AND people.public_name <> '无'
-            ORDER BY people.public_name
             """,
             (capture_date,),
         )
@@ -584,7 +568,6 @@ def build_public_manifest(
                         else "照片记录"
                     ),
                     "places": places,
-                    "people": _people(annotation_db, capture_date),
                     "photos": photos,
                 }
             )

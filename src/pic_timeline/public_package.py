@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -14,6 +15,21 @@ import zipfile
 MEDIA_NAME = re.compile(r"media/[0-9a-f]{20}(?:-thumb)?\.webp\Z")
 MAX_FILES = 50_000
 MAX_BYTES = 2 * 1024**3
+PRIVATE_IDENTITY_FIELDS = {
+    "people", "person", "personId", "person_id", "companion", "companions",
+    "publicName", "public_name", "privateName", "private_name",
+}
+
+
+def check_private_identity_fields(value: object) -> None:
+    if isinstance(value, list):
+        for child in value:
+            check_private_identity_fields(child)
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            if key in PRIVATE_IDENTITY_FIELDS:
+                raise ValueError(f"公开 JSON 包含禁止字段：{key}")
+            check_private_identity_fields(child)
 
 
 def _allowed_file(name: str) -> bool:
@@ -39,6 +55,7 @@ def pack_public_data(source: Path, output: Path) -> Path:
         name = path.relative_to(source).as_posix()
         if path.is_symlink() or not path.is_file() or not _allowed_file(name):
             raise ValueError(f"公开数据包含非白名单文件：{name}")
+    check_private_identity_fields(json.loads((data / "trips.json").read_text(encoding="utf-8")))
     if len(files) > MAX_FILES or sum(path.stat().st_size for path in files) >= MAX_BYTES:
         raise ValueError("公开数据包超过文件数或 2 GiB 限制")
     output = output.resolve()
@@ -102,6 +119,9 @@ def extract_public_data(archive_path: Path, output: Path, checksum: Path | None 
                     continue
                 with archive.open(entry) as source, (output / entry.filename).open("wb") as target:
                     shutil.copyfileobj(source, target)
+            check_private_identity_fields(
+                json.loads((output / "data" / "trips.json").read_text(encoding="utf-8"))
+            )
         except Exception:
             # This directory was created by this operation and only contains whitelisted files.
             shutil.rmtree(output)

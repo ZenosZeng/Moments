@@ -15,7 +15,6 @@ export interface JourneySegment {
   dateLabel: string;
   title: string;
   places: PublicPlace[];
-  people: string[];
   photos: PublicPhoto[];
   tripDays: number;
   tripIds: string[];
@@ -72,9 +71,6 @@ export function groupJourneySegments(trips: PublicTrip[]): JourneySegment[] {
           previous.places.push(place);
         }
       }
-      previous.people = [...new Set([...previous.people, ...trip.people])].sort((left, right) =>
-        left.localeCompare(right, "zh-CN")
-      );
       previous.photos.push(...trip.photos.filter(
         (photo) => !previous.photos.some((item) => item.id === photo.id)
       ));
@@ -90,7 +86,6 @@ export function groupJourneySegments(trips: PublicTrip[]): JourneySegment[] {
       dateLabel: formatPublicDate(trip.date),
       title: segmentTitle(trip.places),
       places: [...trip.places],
-      people: [...trip.people],
       photos: [...trip.photos],
       tripDays: 1,
       tripIds: [trip.id],

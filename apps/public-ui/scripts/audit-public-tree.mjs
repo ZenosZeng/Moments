@@ -6,6 +6,15 @@ const textExtensions = new Set([".html", ".js", ".css", ".json", ".xml", ".txt",
 const forbiddenExtensions = new Set([".sqlite", ".sqlite3", ".db", ".env", ".pem", ".key", ".heic"]);
 const mediaName = /^media\/[0-9a-f]{20}(?:-thumb)?\.webp$/;
 const forbiddenKeys = new Set([
+  "people",
+  "person",
+  "personId",
+  "person_id",
+  "companion",
+  "companions",
+  "publicName",
+  "public_name",
+  "private_name",
   "caption",
   "description",
   "itinerary",

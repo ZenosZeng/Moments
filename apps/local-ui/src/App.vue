@@ -45,7 +45,6 @@ type Footprint = {
   date_label: string;
   city: string;
   places: string[];
-  people: string[];
   photo_count: number;
   days: FootprintDay[];
 };
@@ -57,14 +56,11 @@ type FootprintDay = {
   country_name: string;
   city: string;
   places: string[];
-  people: string[];
-  companion: string;
   photo_count: number;
   place_text: string;
 };
 
 type CountryOption = { code: string; name: string };
-const companionOptions = ["爱人", "家人", "亲人", "同学", "同事", "朋友", "无"];
 
 registerLocale(zhCountries);
 const countryOptions: CountryOption[] = Object.entries(getNames("zh"))
@@ -74,7 +70,6 @@ const countryOptions: CountryOption[] = Object.entries(getNames("zh"))
 const overview = ref<Overview | null>(null);
 const detail = ref<DayDetail | null>(null);
 const form = ref<Annotation | null>(null);
-const companion = ref("无");
 const footprints = ref<Footprint[]>([]);
 const studioSettings = ref<StudioSettings>({ defaultCity: "", availableCities: [] });
 const view = ref<"timeline" | "places" | "trails" | "settings">("timeline");
@@ -132,7 +127,6 @@ function prepareForm(annotation: Annotation): void {
       initialAnnotationCity(form.value.annotated, studioSettings.value.defaultCity)
     ));
   }
-  companion.value = form.value.people[0]?.name || "无";
 }
 
 function barX(index: number): number {
@@ -222,8 +216,6 @@ function normalizedCity(value: string): string {
 
 async function submitAnnotation(countryOverride: CountryOption | null = null): Promise<void> {
   if (!form.value || !currentPlace.value) return;
-  const selectedCompanion = companion.value || "无";
-  const people = [{ name: selectedCompanion, publicName: selectedCompanion }];
   saving.value = true;
   error.value = "";
   const usesStoredCountry = normalizedCity(currentPlace.value.city) ===
@@ -244,7 +236,6 @@ async function submitAnnotation(countryOverride: CountryOption | null = null): P
           countryCode,
           countryName
         }],
-        people,
         featuredPhotos: form.value.featuredPhotos.map((photo) => ({
           relativePath: photo.relativePath
         })),
@@ -360,10 +351,6 @@ async function submitRecord(
           countryCode: country?.code || "",
           countryName: country?.name || ""
         }],
-        people: [{
-          name: day.companion || "无",
-          publicName: day.companion || "无"
-        }]
       })
     });
     trailsRevision.value += 1;
@@ -537,12 +524,6 @@ onMounted(async () => {
           <div v-if="currentPlace" class="simple-form">
             <label class="field"><span>城市（可选）</span><input v-model="currentPlace.city" placeholder="例如：成都" maxlength="80" /></label>
             <label class="field"><span>地点（可选）</span><input v-model="currentPlace.name" placeholder="例如：西湖" maxlength="80" /></label>
-            <label class="field">
-              <span>同行人（可选）</span>
-              <select v-model="companion">
-                <option v-for="option in companionOptions" :key="option" :value="option">{{ option }}</option>
-              </select>
-            </label>
           </div>
           <div class="editor-actions">
             <label class="public-checkbox"><input v-model="form.isPublic" type="checkbox" />允许在旅行网站公开当日数据和精选照片</label>
@@ -591,7 +572,7 @@ onMounted(async () => {
       <div class="section-heading"><div><h1>记录列表</h1><p>按旅行和日期倒序排列；除照片数外，每一项都可直接修改</p></div></div>
       <div v-if="footprints.length" class="record-list" role="table" aria-label="旅行记录">
         <div class="records-grid records-heading" role="row">
-          <span role="columnheader">时间</span><span role="columnheader">国家</span><span role="columnheader">城市</span><span role="columnheader">地点</span><span role="columnheader">同行人</span><span role="columnheader">照片数</span><span class="sr-only" role="columnheader">操作</span>
+          <span role="columnheader">时间</span><span role="columnheader">国家</span><span role="columnheader">城市</span><span role="columnheader">地点</span><span role="columnheader">照片数</span><span class="sr-only" role="columnheader">操作</span>
         </div>
         <section
           v-for="journey in footprints"
@@ -617,11 +598,6 @@ onMounted(async () => {
             </div>
             <div role="cell"><input v-model="day.city" maxlength="80" aria-label="城市" /></div>
             <div role="cell"><input v-model="day.place_text" maxlength="500" aria-label="地点" placeholder="多个地点可用逗号分隔" /></div>
-            <div role="cell">
-              <select v-model="day.companion" aria-label="同行人">
-                <option v-for="option in companionOptions" :key="option" :value="option">{{ option }}</option>
-              </select>
-            </div>
             <div class="photo-fact" role="cell">{{ day.photo_count.toLocaleString() }}</div>
             <div class="record-action" role="cell">
               <button class="icon-button" :disabled="recordSaving === day.capture_date" title="保存这一天" @click="submitRecord(day)">

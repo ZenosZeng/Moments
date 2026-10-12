@@ -35,7 +35,6 @@ export interface PublicTrip {
   year: number;
   title: string;
   places: PublicPlace[];
-  people: string[];
   photos: PublicPhoto[];
 }
 

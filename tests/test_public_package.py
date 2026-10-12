@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 import stat
 import zipfile
@@ -104,3 +105,21 @@ def test_empty_media_directory_is_recreated(tmp_path):
     output = tmp_path / "extracted"
     extract_public_data(archive, output, checksum)
     assert (output / "media").is_dir()
+
+
+@pytest.mark.parametrize("field", ["people", "companion", "publicName", "public_name", "personId"])
+def test_package_rejects_legacy_identity_fields_in_nested_json(tmp_path, field):
+    source = public_source(tmp_path)
+    payload = {"trips": [{"places": [{field: ["隐私测试标记"]}]}]}
+    (source / "data" / "trips.json").write_text(json.dumps(payload), encoding="utf-8")
+    archive = tmp_path / "public-data.zip"
+    with pytest.raises(ValueError, match="禁止字段"):
+        pack_public_data(source, archive)
+    assert not archive.exists()
+
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("data/trips.json", json.dumps(payload))
+    output = tmp_path / "extracted"
+    with pytest.raises(ValueError, match="禁止字段"):
+        extract_public_data(archive, output)
+    assert not output.exists()

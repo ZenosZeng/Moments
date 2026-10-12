@@ -14,7 +14,6 @@ function trip(id: string, date: string, cities: string[]): PublicTrip {
     year: Number(date.slice(0, 4)),
     title: cities.join("、"),
     places: cities.map((city) => ({ city, name: "", countryCode: "CN", countryName: "China" })),
-    people: [],
     photos: []
   };
 }
