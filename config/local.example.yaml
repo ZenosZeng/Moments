@@ -1,0 +1,26 @@
+# Copy to local.yaml once, then edit this private file.
+# Use spaces for indentation and forward slashes for paths.
+# Source IDs must remain stable after importing.
+
+photos:
+  sources:
+    - id: archive
+      legacy_paths: false
+      path: "E:/Photos/archive"
+    # Add more sources here. Use path OR parent + prefix.
+    # - id: new-phone
+    #   parent: "E:/Photos"
+    #   prefix: "phone-new"
+
+app:
+  host: "127.0.0.1"
+  port: 8765
+
+storage:
+  index: "data/db/photo_index.sqlite3"
+  annotations: "data/db/annotations.sqlite3"
+  thumbnails: "data/cache/thumbnails"
+  exports: "data/exports"
+
+publish:
+  base_path: "/Moments/"

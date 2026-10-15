@@ -1,6 +1,10 @@
 # Generated local data
 data/*
 !data/.gitkeep
+!data/README.md
+/_archive/
+/config/*
+!/config/local.example.yaml
 reports/*
 !reports/.gitkeep
 exports/
@@ -23,6 +27,8 @@ exports/
 *.key
 *.local.json
 *.local.toml
+*.local.yaml
+*.local.yml
 config/private.*
 .public-export-*/
 .public-import-*/

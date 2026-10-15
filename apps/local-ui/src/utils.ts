@@ -1,5 +1,17 @@
 import type { FeaturedPhoto, Photo } from "./types";
 
+export const CHART_PHOTO_LIMIT = 50;
+
+export function chartPhotoCount(count: number): number {
+  return Math.min(CHART_PHOTO_LIMIT, Math.max(0, count));
+}
+
+export function photoCountColor(count: number): string {
+  const strength = Math.min(1, Math.log1p(Math.max(0, count)) / Math.log1p(1000));
+  const channel = Math.round(132 - 90 * strength);
+  return `rgb(${channel}, ${channel}, ${channel})`;
+}
+
 export function monthLabel(value: string): string {
   const [year, month] = value.split("-");
   return `${year} 年 ${Number(month)} 月`;

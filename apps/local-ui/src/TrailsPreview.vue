@@ -28,7 +28,7 @@ import {
 import type { TrailSegment } from "./trails";
 import type { TrailsPreviewData } from "./types";
 
-const props = defineProps<{ revision: number }>();
+const props = defineProps<{ revision: number; ready: boolean; generating: boolean }>();
 const emit = defineEmits<{ openRecord: [captureDate: string] }>();
 
 type CountryProperties = { name: string };
@@ -52,6 +52,7 @@ const path = geoPath(projection);
 
 const data = ref<TrailsPreviewData | null>(null);
 const loading = ref(true);
+let previewRequest = 0;
 const error = ref("");
 const yearFilter = ref("");
 const selectedCity = ref("");
@@ -122,15 +123,18 @@ function isSelectedCountry(country: CountryFeature): boolean {
 }
 
 async function loadPreview(): Promise<void> {
+  const version = ++previewRequest;
   loading.value = true;
   error.value = "";
   try {
-    data.value = await api<TrailsPreviewData>("/api/trails-preview");
+    const result = await api<TrailsPreviewData>("/api/trails-preview?cached=1");
+    if (version !== previewRequest || !props.ready || props.generating) return;
+    data.value = result;
     closePhoto();
   } catch (reason) {
-    error.value = (reason as Error).message;
+    if (version === previewRequest) error.value = (reason as Error).message;
   } finally {
-    loading.value = false;
+    if (version === previewRequest) loading.value = false;
   }
 }
 
@@ -269,7 +273,19 @@ function movePhoto(direction: number): void {
   lightboxIndex.value = (lightboxIndex.value + direction + length) % length;
 }
 
-watch(() => props.revision, loadPreview, { immediate: true });
+watch([() => props.revision, () => props.ready, () => props.generating], () => {
+  if (props.generating) {
+    previewRequest += 1;
+    loading.value = true;
+  } else if (props.ready) {
+    void loadPreview();
+  } else {
+    previewRequest += 1;
+    loading.value = false;
+    data.value = null;
+    closePhoto();
+  }
+}, { immediate: true });
 watch(segments, (items) => {
   if (!items.some((segment) => segment.id === lightboxSegmentId.value)) closePhoto();
 });
@@ -285,14 +301,14 @@ watch(cityVisits, (visits) => {
 watch(visitedCountryCodes, (codes) => {
   if (selectedCountryCode.value && !codes.has(selectedCountryCode.value)) resetMap();
 });
-onBeforeUnmount(closePhoto);
+onBeforeUnmount(() => { previewRequest += 1; closePhoto(); });
 </script>
 
 <template>
   <main class="trails-preview">
     <section class="preview-controls">
       <div>
-        <span>实时发布效果</span>
+        <span>Moments · 方舟旅迹</span>
         <h1>旅行预览</h1>
       </div>
       <div class="preview-filters">
@@ -325,6 +341,7 @@ onBeforeUnmount(closePhoto);
       </div>
       <div v-if="loading" class="preview-state">正在生成本地预览</div>
       <div v-else-if="error" class="preview-state error">{{ error }}</div>
+      <div v-else-if="!data" class="preview-state">旅行预览尚未生成</div>
       <template v-else>
         <svg
           ref="mapSvg"

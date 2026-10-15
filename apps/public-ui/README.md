@@ -1,4 +1,4 @@
-# Moments 静态前端
+# Moments · 方舟旅迹 静态前端
 
 此目录包含完整的网站源码、离线城市定位和产物审计，属于 Moments 主仓库，不需要单独的前端仓库。不包含照片标注服务；个人 JSON 与 WebP 放在被忽略的 public/data/ 和 public/media/。
 
@@ -10,7 +10,7 @@ pixi run npm --prefix apps/public-ui run import-data
 pixi run npm --prefix apps/public-ui run dev
 ```
 
-导入要求已生成 exports/public-data/；可以先运行 pixi run test，使用空的合成演示数据，不需要真实照片。dev 地址为 http://127.0.0.1:5174。
+导入默认读取主仓库的 data/exports/public-data/；修改了配置中的导出目录时通过 import-data 的参数指定新目录，或直接运行 pixi run release。可以先运行 pixi run test，使用空的合成演示数据，不需要真实照片。dev 地址为 http://127.0.0.1:5174。
 
 独立构建、检查：
 

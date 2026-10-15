@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
   CalendarDays,
   Check,
@@ -7,11 +7,12 @@ import {
   ChevronRight,
   CircleAlert,
   Database,
+  FileArchive,
+  Hash,
   Globe2,
   Image as ImageIcon,
   LoaderCircle,
   MapPinned,
-  RefreshCw,
   Save,
   Settings as SettingsIcon,
   Star,
@@ -22,6 +23,9 @@ import { getNames, registerLocale } from "i18n-iso-countries";
 import zhCountries from "i18n-iso-countries/langs/zh.json";
 import { api, ApiError } from "./api";
 import TrailsPreview from "./TrailsPreview.vue";
+import TaskControl from "./TaskControl.vue";
+import PhotoLightbox from "./PhotoLightbox.vue";
+import { useLocalTask } from "./useLocalTask";
 import { trailCityColor } from "./trails";
 import type {
   Annotation,
@@ -32,6 +36,9 @@ import type {
 } from "./types";
 import {
   compactPath,
+  CHART_PHOTO_LIMIT,
+  chartPhotoCount,
+  photoCountColor,
   initialAnnotationCity,
   monthLabel,
   updateFeatured,
@@ -85,18 +92,32 @@ const countryDialogCode = ref("");
 const pendingRecord = ref<FootprintDay | null>(null);
 const error = ref("");
 const notice = ref("");
+const lightboxIndex = ref<number | null>(null);
+const indexTask = useLocalTask("/api/index", refreshIndexedView);
+const previewTask = useLocalTask("/api/trails-preview", () => {
+  trailsRevision.value += 1;
+  if (previewTask.status.value.ready) notice.value = previewTask.status.value.message;
+});
+const exportTask = useLocalTask("/api/public-export", () => {
+  if (exportTask.status.value.ready) notice.value = exportTask.status.value.message;
+});
+const indexStatus = indexTask.status;
+const previewStatus = previewTask.status;
+const exportStatus = exportTask.status;
+const indexProblem = indexTask.problem;
+const previewProblem = previewTask.problem;
+const exportProblem = exportTask.problem;
+const tasksBusy = computed(() =>
+  indexTask.pending.value || previewTask.pending.value || exportTask.pending.value ||
+  indexStatus.value.state === "running" || previewStatus.value.state === "running" || exportStatus.value.state === "running"
+);
+watch(view, () => { lightboxIndex.value = null; });
 
 const chartWidth = 1120;
 const chartHeight = 276;
-const chartTop = 20;
+const chartTop = 28;
 const chartBottom = 54;
-const maxCount = computed(() =>
-  Math.max(1, ...(overview.value?.days.map((day) => day.count) || [1]))
-);
-const chartTicks = computed(() => {
-  const max = maxCount.value;
-  return [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(max * ratio));
-});
+const chartTicks = [0, 10, 20, 30, 40, CHART_PHOTO_LIMIT];
 const selectedFeatured = computed(() => form.value?.featuredPhotos || []);
 const featuredPhotoItems = computed(() =>
   detail.value?.photos.filter((photo) => isFeatured(photo.relative_path)) || []
@@ -140,11 +161,11 @@ function barWidth(): number {
 }
 
 function barHeight(count: number): number {
-  return (count / maxCount.value) * (chartHeight - chartTop - chartBottom);
+  return (chartPhotoCount(count) / CHART_PHOTO_LIMIT) * (chartHeight - chartTop - chartBottom);
 }
 
 function yForTick(value: number): number {
-  return chartHeight - chartBottom - (value / maxCount.value) * (chartHeight - chartTop - chartBottom);
+  return chartHeight - chartBottom - (value / CHART_PHOTO_LIMIT) * (chartHeight - chartTop - chartBottom);
 }
 
 function cloneAnnotation(annotation: Annotation): Annotation {
@@ -174,11 +195,14 @@ async function loadSettings(): Promise<void> {
 
 async function loadDay(date: string): Promise<void> {
   closeCountryDialog();
+  lightboxIndex.value = null;
   selectedDate.value = date;
   busy.value = true;
   error.value = "";
   try {
-    detail.value = await api<DayDetail>(`/api/days/${date}?limit=60`);
+    const result = await api<DayDetail>(`/api/days/${date}?limit=all`);
+    if (selectedDate.value !== date) return;
+    detail.value = result;
     prepareForm(detail.value.annotation);
   } catch (reason) {
     error.value = (reason as Error).message;
@@ -187,12 +211,31 @@ async function loadDay(date: string): Promise<void> {
   }
 }
 
-async function loadMore(): Promise<void> {
-  if (!detail.value) return;
-  const next = await api<DayDetail>(
-    `/api/days/${detail.value.date}?limit=60&offset=${detail.value.photos.length}`
-  );
-  detail.value.photos.push(...next.photos);
+function openDayPhoto(relativePath: string): void {
+  const index = detail.value?.photos.findIndex((photo) => photo.relative_path === relativePath) ?? -1;
+  if (index >= 0) lightboxIndex.value = index;
+}
+
+async function refreshIndexedView(): Promise<void> {
+  await loadOverview(overview.value?.selected_month);
+  const date = selectedDate.value;
+  if (date && detail.value) {
+    try {
+      const updated = await api<DayDetail>(`/api/days/${date}?limit=all`);
+      if (selectedDate.value === date) {
+        const activePath = lightboxIndex.value === null ? null : detail.value?.photos[lightboxIndex.value]?.relative_path;
+        detail.value = updated;
+        if (activePath) {
+          const index = updated.photos.findIndex((photo) => photo.relative_path === activePath);
+          lightboxIndex.value = index < 0 ? null : index;
+        }
+      }
+    } catch (reason) {
+      error.value = (reason as Error).message;
+    }
+  }
+  await connectProducts();
+  notice.value = indexStatus.value.message;
 }
 
 async function changeMonth(direction: number): Promise<void> {
@@ -245,7 +288,7 @@ async function submitAnnotation(countryOverride: CountryOption | null = null): P
     prepareForm(saved);
     if (detail.value) detail.value.annotation = saved;
     await loadOverview(overview.value?.selected_month);
-    trailsRevision.value += 1;
+    await connectProducts();
     notice.value = "当日数据和精选照片已保存";
   } catch (reason) {
     if (reason instanceof ApiError && reason.code === "COUNTRY_REQUIRED") {
@@ -289,12 +332,26 @@ function isFeatured(relativePath: string): boolean {
 }
 
 async function refreshIndex(): Promise<void> {
-  try {
-    await api("/api/index/refresh", { method: "POST" });
-    notice.value = "照片索引正在后台更新";
-  } catch (reason) {
-    error.value = (reason as Error).message;
-  }
+  if (tasksBusy.value) return;
+  await indexTask.start();
+  await connectProducts();
+}
+
+async function connectProducts(): Promise<void> {
+  await Promise.all([previewTask.connect(), exportTask.connect()]);
+}
+
+async function generatePreview(): Promise<void> {
+  if (tasksBusy.value) return;
+  view.value = "trails";
+  await previewTask.start();
+  await Promise.all([indexTask.connect(), exportTask.connect()]);
+}
+
+async function exportPublic(): Promise<void> {
+  if (tasksBusy.value) return;
+  await exportTask.start();
+  await Promise.all([indexTask.connect(), previewTask.connect()]);
 }
 
 function recordAnchor(captureDate: string): string {
@@ -353,7 +410,7 @@ async function submitRecord(
         }],
       })
     });
-    trailsRevision.value += 1;
+    await connectProducts();
     notice.value = `${day.display_date} 的记录已保存`;
     await showPlaces(day.capture_date);
   } catch (reason) {
@@ -378,7 +435,7 @@ async function deleteRecord(day: FootprintDay): Promise<void> {
   error.value = "";
   try {
     await api(`/api/records/${day.capture_date}`, { method: "DELETE" });
-    trailsRevision.value += 1;
+    await connectProducts();
     notice.value = `${day.display_date} 的标注已删除，原始照片未改动`;
     await showPlaces();
   } catch (reason) {
@@ -412,12 +469,12 @@ async function saveSettings(): Promise<void> {
 }
 
 function showTrails(): void {
-  trailsRevision.value += 1;
   view.value = "trails";
+  if (!previewStatus.value.ready && !tasksBusy.value) void generatePreview();
 }
 
 onMounted(async () => {
-  await Promise.all([loadOverview(), loadSettings()]);
+  await Promise.all([loadOverview(), loadSettings(), indexTask.connect(), previewTask.connect(), exportTask.connect()]);
   const query = new URLSearchParams(window.location.search);
   const requestedView = query.get("view");
   if (requestedView === "trails") {
@@ -443,7 +500,7 @@ onMounted(async () => {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><ImageIcon :size="20" /><strong>Moments Studio</strong><span>本地照片标注</span></div>
+      <div class="brand"><ImageIcon :size="20" /><strong>Moments · 方舟旅迹</strong><span>本地照片标注</span></div>
       <nav aria-label="主导航">
         <button :class="{ active: view === 'timeline' }" @click="view = 'timeline'">
           <CalendarDays :size="17" />照片标注
@@ -459,10 +516,22 @@ onMounted(async () => {
         </button>
       </nav>
       <div class="top-actions">
-        <span v-if="overview" class="source" :title="overview.source_root"><Database :size="15" />原图索引已连接</span>
-        <button class="icon-button" title="更新照片索引" @click="refreshIndex"><RefreshCw :size="18" /></button>
+        <span v-if="overview" class="source" :title="overview.source_roots?.join('\n') || overview.source_root"><Database :size="15" />已连接 {{ overview.source_roots?.length || 1 }} 个原图目录</span>
       </div>
     </header>
+
+    <section class="task-toolbar" aria-label="照片处理任务">
+      <div class="task-toolbar-inner">
+        <TaskControl label="更新照片索引" kind="index" :status="indexStatus" :problem="indexProblem" :disabled="tasksBusy" :pending="indexTask.pending.value" @start="refreshIndex" />
+        <TaskControl label="生成旅行预览" kind="preview" :status="previewStatus" :problem="previewProblem" :disabled="tasksBusy" :pending="previewTask.pending.value" @start="generatePreview" />
+        <TaskControl label="导出公开产物" kind="export" :status="exportStatus" :problem="exportProblem" :disabled="tasksBusy" :pending="exportTask.pending.value" @start="exportPublic">
+          <div v-if="exportStatus.ready && exportStatus.state === 'complete'" class="artifact-links">
+            <a href="/api/public-export/files/public-data.zip" title="下载公开数据 ZIP" download><FileArchive :size="13" />ZIP</a>
+            <a href="/api/public-export/files/public-data.zip.sha256" title="下载 SHA-256 校验文件" download><Hash :size="13" />SHA-256</a>
+          </div>
+        </TaskControl>
+      </div>
+    </section>
 
     <div v-if="error || notice" class="toast" :class="{ error }">
       <CircleAlert v-if="error" :size="17" /><Check v-else :size="17" />
@@ -506,6 +575,7 @@ onMounted(async () => {
               :class="['bar', { selected: selectedDate === day.date, annotated: day.annotation.annotated, featured: day.annotation.featuredPhotos.length }]"
               rx="2"
             ><title>{{ day.date }}：{{ day.count }} 张</title></rect>
+            <text v-if="day.count" :x="barX(index) + barWidth() / 2" :y="chartHeight - chartBottom - barHeight(day.count) - 7" text-anchor="middle" class="bar-count" :fill="photoCountColor(day.count)" :font-size="Math.min(11, (barWidth() + 2) / (String(day.count).length * .65))">{{ day.count }}</text>
             <text v-if="day.day === 1 || day.day % 2 === 0 || weekendLabel(day.date)" :x="barX(index) + barWidth() / 2" :y="chartHeight - 34" text-anchor="middle" class="day-label">{{ day.day }}</text>
             <text v-if="weekendLabel(day.date)" :x="barX(index) + barWidth() / 2" :y="chartHeight - 18" text-anchor="middle" class="weekend-label">{{ weekendLabel(day.date) }}</text>
             <circle v-if="day.annotation.featuredPhotos.length" :cx="barX(index) + barWidth() / 2" :cy="chartHeight - 7" r="2.5" class="featured-dot" />
@@ -540,7 +610,7 @@ onMounted(async () => {
             <div class="photo-subheading"><div><Star :size="16" /><h3>精选照片</h3></div><span>{{ featuredPhotoItems.length }} 张</span></div>
             <div class="featured-photo-row">
               <article v-for="photo in featuredPhotoItems" :key="photo.relative_path" class="photo-card featured">
-                <img :src="photo.thumbnail_url" :alt="compactPath(photo.relative_path)" loading="lazy" />
+                <button class="photo-open" title="查看大图" @click="openDayPhoto(photo.relative_path)"><img :src="photo.thumbnail_url" :alt="compactPath(photo.relative_path)" loading="lazy" /></button>
                 <button class="star-button active" title="取消精选" @click="togglePhoto(photo.relative_path)">
                   <Star :size="19" fill="currentColor" />
                 </button>
@@ -553,16 +623,15 @@ onMounted(async () => {
             <div class="photo-subheading"><div><ImageIcon :size="16" /><h3>全部照片</h3></div><span>{{ otherPhotoItems.length }} 张未精选</span></div>
             <div v-if="otherPhotoItems.length" class="photo-grid">
               <article v-for="photo in otherPhotoItems" :key="photo.relative_path" class="photo-card">
-                <img :src="photo.thumbnail_url" :alt="compactPath(photo.relative_path)" loading="lazy" />
+                <button class="photo-open" title="查看大图" @click="openDayPhoto(photo.relative_path)"><img :src="photo.thumbnail_url" :alt="compactPath(photo.relative_path)" loading="lazy" /></button>
                 <button class="star-button" title="设为精选" @click="togglePhoto(photo.relative_path)">
                   <Star :size="19" fill="none" />
                 </button>
                 <div class="photo-meta"><span :title="photo.relative_path">{{ compactPath(photo.relative_path) }}</span></div>
               </article>
             </div>
-            <div v-else class="photo-list-empty">当前已加载的照片均已设为精选</div>
+            <div v-else class="photo-list-empty">当天照片均已设为精选</div>
           </section>
-          <button v-if="detail.photos.length < detail.photos_total" class="load-more" @click="loadMore">继续加载（已显示 {{ detail.photos.length }} / {{ detail.photos_total }}）</button>
         </div>
       </section>
       <section v-else class="empty-state"><CalendarDays :size="34" /><h2>选择一个有照片的日期</h2><p>柱状图越高，表示当天拍摄的照片越多。</p></section>
@@ -632,7 +701,8 @@ onMounted(async () => {
       </section>
     </main>
 
-    <TrailsPreview v-else :revision="trailsRevision" @open-record="showPlaces" />
+    <TrailsPreview v-else :revision="trailsRevision" :ready="previewStatus.ready" :generating="previewStatus.state === 'running' || previewTask.pending.value" @open-record="showPlaces" />
+    <PhotoLightbox v-if="lightboxIndex !== null && detail" v-model:index="lightboxIndex" :photos="detail.photos" :date="detail.date" @close="lightboxIndex = null" />
 
     <div v-if="countryDialogCity" class="country-dialog-backdrop" @click.self="closeCountryDialog" @keydown.esc="closeCountryDialog">
       <section class="country-dialog" role="dialog" aria-modal="true" aria-labelledby="country-dialog-title">

@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--index",
         type=Path,
-        default=Path("data/photo_index.sqlite3"),
+        default=Path("data/db/photo_index.sqlite3"),
         help="Incremental SQLite index path",
     )
     parser.add_argument(

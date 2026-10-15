@@ -330,8 +330,8 @@ onBeforeUnmount(() => {
   <main class="trails-preview">
       <section class="preview-controls" aria-labelledby="page-title">
         <div>
-          <span>实时发布效果</span>
-          <h1 id="page-title">旅行预览</h1>
+          <span>旅行地图与时间线</span>
+          <h1 id="page-title">Moments · 方舟旅迹</h1>
         </div>
         <div class="preview-filters">
           <label>

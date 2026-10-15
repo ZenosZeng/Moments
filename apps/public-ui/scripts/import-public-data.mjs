@@ -8,7 +8,7 @@ import { auditPublicTree } from "./audit-public-tree.mjs";
 const repositoryRoot = process.cwd();
 const execFileAsync = promisify(execFile);
 const sourceRoot = path.resolve(
-  process.argv[2] || path.join(repositoryRoot, "..", "..", "exports", "public-data")
+  process.argv[2] || path.join(repositoryRoot, "..", "..", "data", "exports", "public-data")
 );
 const publicRoot = path.join(repositoryRoot, "public");
 

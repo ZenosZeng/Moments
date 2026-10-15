@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   compactPath,
+  CHART_PHOTO_LIMIT,
+  chartPhotoCount,
+  photoCountColor,
   initialAnnotationCity,
   monthLabel,
   updateFeatured,
@@ -8,6 +11,19 @@ import {
 } from "./utils";
 
 describe("local-ui helpers", () => {
+  it("caps bar height at 50 without changing the actual count", () => {
+    expect(CHART_PHOTO_LIMIT).toBe(50);
+    expect(chartPhotoCount(0)).toBe(0);
+    expect(chartPhotoCount(25)).toBe(25);
+    expect(chartPhotoCount(50)).toBe(50);
+    expect(chartPhotoCount(500)).toBe(50);
+  });
+
+  it("uses progressively darker count labels", () => {
+    const brightness = (count: number) => Number(photoCountColor(count).match(/\d+/)?.[0]);
+    expect(brightness(10)).toBeGreaterThan(brightness(50));
+    expect(brightness(50)).toBeGreaterThan(brightness(500));
+  });
   it("formats Chinese month labels", () => {
     expect(monthLabel("2026-07")).toBe("2026 年 7 月");
   });

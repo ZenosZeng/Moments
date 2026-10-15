@@ -32,6 +32,7 @@ export interface Overview {
   available_months: string[];
   days: DaySummary[];
   source_root: string;
+  source_roots?: string[];
   summary: {
     month_photos: number;
     active_days: number;
@@ -40,7 +41,22 @@ export interface Overview {
     included: number;
     missing: number;
   };
-  refresh: { state: string; message: string };
+  refresh: TaskStatus;
+}
+
+export interface TaskStatus {
+  state: "idle" | "running" | "complete" | "error";
+  run_id: number;
+  message: string;
+  stage: string;
+  completed: number;
+  total: number;
+  percent: number | null;
+  elapsed_seconds: number;
+  ready: boolean;
+  stale: boolean;
+  cache?: { reused: number; pending: number; total: number; unit: string };
+  artifacts?: string[];
 }
 
 export interface StudioSettings {
@@ -51,6 +67,7 @@ export interface StudioSettings {
 export interface Photo {
   relative_path: string;
   thumbnail_url: string;
+  preview_url: string;
   capture_time: string;
   featured: boolean;
 }

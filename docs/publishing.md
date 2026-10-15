@@ -6,36 +6,36 @@
 
 **上传附件和运行 Pages 工作流都是真正的公开发布。** ZIP、照片、日期和地点均可被他人下载。不要上传 SQLite、私密备注、路径配置或原图；公开 ZIP 不是标注数据库备份。
 
-本地 `pixi run release` 只生成文件，不连接 GitHub、不上传、不部署。代码 push 和 Release 创建也不会触发部署。
+本地界面的“导出公开产物”与 `pixi run release` 都只生成文件，不连接 GitHub、不上传、不部署。代码 push 和 Release 创建也不会触发部署。
 
 ## 1. 本地检查与导出
 
-在 Moments 根目录执行：
+在本地工具中点击顶部 **导出公开产物**，查看进度；完成后可下载 ZIP 和 SHA-256，原文件位于 `data/exports/`。此按钮只生成数据附件，网站由 Pages Actions 构建，不必在本地再构建一次。
+
+需要完整测试或同时构建本地静态网站时，在 Moments 根目录执行：
 
 ```powershell
 pixi run test
 pixi run release
 ```
 
-沿用旧工作台数据时，导出命令为：
+本机参数统一从 `config/local.yaml` 读取；数据库和缓存位于 Moments 的 `data/` 内，导出不依赖旧仓库。首次配置及多照片源设置见 [使用指南](../user_guide.md)。
 
-```powershell
-pixi run release --index '..\moment-studio\data\photo_index.sqlite3' --annotations '..\moment-studio\data\annotations.sqlite3'
-```
-
-生成：
+生成的附件及可选网站：
 
 | 文件 | 用途 |
 | --- | --- |
-| `exports/public-data.zip` | 白名单 JSON、脱敏 WebP 和缩略图 |
-| `exports/public-data.zip.sha256` | ZIP 的 SHA-256 校验和 |
-| `exports/site/`、`exports/site.zip` | 本地构建的完整静态网站 |
+| `data/exports/public-data.zip` | 白名单 JSON、脱敏 WebP 和缩略图 |
+| `data/exports/public-data.zip.sha256` | ZIP 的 SHA-256 校验和 |
+| `data/exports/site/`、`data/exports/site.zip` | 仅命令行 release 生成的完整静态网站 |
 
 公开记录需勾选允许公开且至少有一张精选照片。导出会复用缓存、纠正方向、缩放并删除 EXIF/GPS/XMP；ZIP 不包含缓存标记或本地数据库。上传前自行检查记录、地点和精选照片。单个 ZIP 小于 2 GiB。
 
+界面导出基于数据库快照；期间保存标注或更新索引后会提示重新导出。图片增量缓存不会跳过隐私审计、完整打包与校验。界面和命令行通过同一个本地锁防止同时导出。
+
 同行人功能已移除，公开 JSON、ZIP 和最终产物均拒绝同行人及昵称字段。旧数据版本须重新导出后才能部署；旧附件或旧 Pages 中的信息不会因此自动删除。照片画面和自由填写的地点文字仍需人工确认是否适合公开。
 
-默认静态路径为 `/Moments/`；其他仓库使用 `--base /仓库名/`，根域名使用 `--base /`。Actions 部署时会自动使用 Pages 配置的路径。
+默认静态路径为 `/Moments/`；其他仓库在配置的 `publish:` 下设置 `base_path: "/仓库名/"`，根域名使用 `"/"`。Actions 部署时会自动使用 Pages 配置的路径。
 
 ## 2. 手动上传公开附件
 
@@ -46,7 +46,7 @@ pixi run release --index '..\moment-studio\data\photo_index.sqlite3' --annotatio
 ```powershell
 $repo = 'ZenosZeng/Moments'
 $tag = 'data-2026-10-12'
-gh release create $tag exports/public-data.zip exports/public-data.zip.sha256 --repo $repo --target main --title "公开数据 $tag" --notes '经检查的公开记录与脱敏精选照片。' --latest=false
+gh release create $tag data/exports/public-data.zip data/exports/public-data.zip.sha256 --repo $repo --target main --title "公开数据 $tag" --notes '经检查的公开记录与脱敏精选照片。' --latest=false
 ```
 
 没有把 `gh` 加入 PATH 时，可用实际安装路径代替 `gh`。两份附件必须同属一个已经发布、非草稿的 Release。附件仍是完整公开快照；增量缓存只加快本地图片生成，不是拆分上传。

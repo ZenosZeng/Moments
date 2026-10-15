@@ -9,6 +9,7 @@ import re
 import shutil
 import stat
 import tempfile
+from typing import Callable
 import zipfile
 
 
@@ -19,6 +20,10 @@ PRIVATE_IDENTITY_FIELDS = {
     "people", "person", "personId", "person_id", "companion", "companions",
     "publicName", "public_name", "privateName", "private_name",
 }
+PRIVATE_PATH_FIELDS = {
+    "sourceRoot", "source_root", "sourceRoots", "source_roots",
+    "photoSources", "photo_sources",
+}
 
 
 def check_private_identity_fields(value: object) -> None:
@@ -27,7 +32,7 @@ def check_private_identity_fields(value: object) -> None:
             check_private_identity_fields(child)
     elif isinstance(value, dict):
         for key, child in value.items():
-            if key in PRIVATE_IDENTITY_FIELDS:
+            if key in PRIVATE_IDENTITY_FIELDS | PRIVATE_PATH_FIELDS:
                 raise ValueError(f"公开 JSON 包含禁止字段：{key}")
             check_private_identity_fields(child)
 
@@ -41,7 +46,7 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def pack_public_data(source: Path, output: Path) -> Path:
+def pack_public_data(source: Path, output: Path, *, progress: Callable[[str, int, int], None] | None = None) -> Path:
     source = source.resolve()
     data = source / "data"
     media = source / "media"
@@ -58,7 +63,10 @@ def pack_public_data(source: Path, output: Path) -> Path:
     check_private_identity_fields(json.loads((data / "trips.json").read_text(encoding="utf-8")))
     if len(files) > MAX_FILES or sum(path.stat().st_size for path in files) >= MAX_BYTES:
         raise ValueError("公开数据包超过文件数或 2 GiB 限制")
-    output = output.resolve()
+    output = output.absolute()
+    if output.is_symlink() or output.with_name(output.name + ".sha256").is_symlink():
+        raise ValueError("公开 ZIP 或校验文件不能是链接")
+    output = output.parent.resolve() / output.name
     if output == data / "trips.json" or output.is_relative_to(media):
         raise ValueError("ZIP 输出不能覆盖公开数据")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -66,18 +74,34 @@ def pack_public_data(source: Path, output: Path) -> Path:
     os.close(handle)
     temporary = Path(temporary_name)
     try:
+        if progress:
+            progress("打包公开数据", 0, len(files))
         with zipfile.ZipFile(temporary, "w", allowZip64=True) as archive:
-            for path in files:
+            for completed, path in enumerate(files, 1):
                 # WebP is already compressed; storing it avoids redundant compression.
                 compression = zipfile.ZIP_STORED if path.suffix == ".webp" else zipfile.ZIP_DEFLATED
                 archive.write(path, path.relative_to(source).as_posix(), compress_type=compression)
+                if progress:
+                    progress("打包公开数据", completed, len(files))
         if temporary.stat().st_size >= MAX_BYTES:
             raise ValueError("ZIP 附件必须小于 2 GiB")
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
     checksum = output.with_name(output.name + ".sha256")
-    checksum.write_text(f"{_sha256(output)}  {output.name}\n", encoding="ascii")
+    if progress:
+        progress("计算校验和", 0, 1)
+    temporary_checksum = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="ascii", dir=output.parent, suffix=".sha256.tmp", delete=False) as stream:
+            temporary_checksum = Path(stream.name)
+            stream.write(f"{_sha256(output)}  {output.name}\n")
+        temporary_checksum.replace(checksum)
+    finally:
+        if temporary_checksum is not None:
+            temporary_checksum.unlink(missing_ok=True)
+    if progress:
+        progress("计算校验和", 1, 1)
     return checksum
 
 

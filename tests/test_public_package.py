@@ -1,7 +1,10 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -10,6 +13,13 @@ from pic_timeline.public_package import extract_public_data, pack_public_data
 
 
 PHOTO = "0123456789abcdef0123.webp"
+
+
+def test_package_cli_remains_standalone_for_pages_actions(tmp_path):
+    script = Path(__file__).resolve().parents[1] / "src" / "pic_timeline" / "public_package.py"
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, env=environment, capture_output=True, text=True, check=True)
+    assert "pack" in result.stdout and "extract" in result.stdout
 
 
 def public_source(tmp_path: Path) -> Path:
@@ -35,6 +45,18 @@ def test_roundtrip_excludes_cache_and_private_root_files(tmp_path):
     extract_public_data(archive, output, checksum)
     assert (output / "media" / PHOTO).read_bytes() == b"synthetic image"
     assert sorted(path.name for path in output.iterdir()) == ["data", "media"]
+
+
+def test_pack_reports_file_progress_and_checksum_completion(tmp_path):
+    source = public_source(tmp_path)
+    events = []
+    checksum = pack_public_data(source, tmp_path / "public-data.zip", progress=lambda *event: events.append(event))
+    assert events == [
+        ("打包公开数据", 0, 2), ("打包公开数据", 1, 2), ("打包公开数据", 2, 2),
+        ("计算校验和", 0, 1), ("计算校验和", 1, 1),
+    ]
+    assert checksum.is_file()
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 @pytest.mark.parametrize("name", ["data/private.json", "media/private.jpg", "media/private.webp"])
@@ -107,7 +129,10 @@ def test_empty_media_directory_is_recreated(tmp_path):
     assert (output / "media").is_dir()
 
 
-@pytest.mark.parametrize("field", ["people", "companion", "publicName", "public_name", "personId"])
+@pytest.mark.parametrize("field", [
+    "people", "companion", "publicName", "public_name", "personId",
+    "source_roots", "sourceRoots", "photo_sources", "photoSources",
+])
 def test_package_rejects_legacy_identity_fields_in_nested_json(tmp_path, field):
     source = public_source(tmp_path)
     payload = {"trips": [{"places": [{field: ["隐私测试标记"]}]}]}

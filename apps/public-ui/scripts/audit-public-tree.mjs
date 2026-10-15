@@ -27,6 +27,10 @@ const forbiddenKeys = new Set([
   "relative_path",
   "sourceRoot",
   "source_root",
+  "sourceRoots",
+  "source_roots",
+  "photoSources",
+  "photo_sources",
   "tripTitle",
   "absolutePath",
   "absolute_path"

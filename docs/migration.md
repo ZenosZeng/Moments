@@ -10,18 +10,28 @@
 
 归档不是删除，不会移除历史里的数据库和照片，也不保证旧 Pages 立即停止。旧私有仓库不可直接改为 public。
 
-## 继续使用已有标注
+## 本地数据独立存放
 
-旧目录和数据库不会自动迁移或修改。可在新项目中指定旧索引和标注数据库：
+Moments 不再使用旧仓库数据库或前端。先配置 `config/local.yaml` 的照片源，运行时数据统一位于 [data 目录](../data/README.md)。原图仍保留在仓库外，只读访问。
+
+已经完成本地迁移的电脑直接执行 `pixi run app`；增加新手机目录后点击刷新索引，旧精选引用不变。`pixi run release` 从本仓库数据库读取标注，不需要指向旧路径。
+
+其他旧版本用户需迁移时，先关闭新旧程序并完成本机配置；给旧照片源添加 `legacy_paths: true`（最多一个），新源保持默认 `false`。该标记和源 ID 都不要再改，确保将来重建索引时旧精选仍能对应。仅对空的目标数据目录运行一次：
 
 ```powershell
-pixi run app --source 'E:\Photos\archive' --index '..\moment-studio\data\photo_index.sqlite3' --annotations '..\moment-studio\data\annotations.sqlite3'
-pixi run release --index '..\moment-studio\data\photo_index.sqlite3' --annotations '..\moment-studio\data\annotations.sqlite3'
+pixi run python scripts/migrate_legacy_data.py --studio '../moment-studio' --public '../moment-trails-public' --legacy-source old-phone
 ```
 
-把照片示例路径替换成自己的路径。第一次刷新索引可能需要重新扫描，标注仍沿用旧文件。操作前关闭旧程序并备份数据库，避免两个服务同时写入。
+`old-phone` 换成配置中旧照片源的固定 ID。该一次性脚本：
 
-如需迁移到新项目的 `data/`，关闭程序后自行复制数据库，新目录数据仍被 Git 忽略。不要复制 `.git/`。
+- 使用 SQLite backup API 复制一致性快照，校验表内容、外键与精选原图引用；不覆盖既有目标。
+- 将标注和索引迁入 `data/db/`，修正改名后的原图路径，删除已退役的同行人表；保留其他字段、界面设置和精选引用。
+- 将本地缩略图迁入 `data/cache/thumbnails/`，有效且无 EXIF/XMP 的 WebP 迁入 `data/exports/public-data/media/`，以后继续增量复用。
+- 不迁入旧公开 JSON、旧网站构建或临时导出，避免复用包含同行人的数据；下一次 release 重新生成白名单 JSON。
+- 将原始数据库及旧快照保存在 `data/backups/legacy-时间/`，记录校验报告；这些备份仍可能包含同行人，必须私密保管。
+- 将两个旧仓库分别打包为 `_archive/仓库名-时间.zip`，包含隐藏的 `.git/`、代码及旧数据，生成 SHA-256 并完整校验 ZIP。排除可重装的 `.pixi/`、`node_modules/`、构建与临时目录、浏览器测试缓存。
+
+脚本不启动应用、不运行导出、不上传任何内容，也不移动、删除旧目录或原图。旧目录保留作额外保险，但应用不再依赖它们。归档 ZIP 与迁移备份全部被 Git 忽略，不可上传到公开仓库或 Release。
 
 ## 个人网站的数据方案
 

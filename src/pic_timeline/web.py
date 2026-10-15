@@ -9,6 +9,7 @@ import re
 import socket
 import sqlite3
 import threading
+import tempfile
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
@@ -26,8 +27,13 @@ from flask import (
 )
 from PIL import Image, ImageOps
 
-from .analysis import find_source_root, scan_archive
+from .analysis import find_source_root, scan_archive, scan_sources
+from .background_tasks import BackgroundTask, ProgressCallback
+from .local_cache import JsonCache, fingerprint, jpeg_cache_path, nonempty_file, valid_preview_entry
+from .release_data import ARTIFACTS, EXPORT_PHASES, release_data
 from .city_country import country_from_code, infer_city
+from .configuration import load_config
+from .photo_sources import PhotoSource, bind_index_sources, resolve_photo_path, source_bindings
 from .public_package import PRIVATE_IDENTITY_FIELDS
 
 
@@ -260,6 +266,19 @@ class PhotoIndex:
                 (capture_date, *order_values, limit, offset),
             ).fetchall()
         return [dict(row) for row in rows], total
+
+    def photos_by_paths(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        result = {}
+        unique = list(dict.fromkeys(paths))
+        if not unique:
+            return result
+        with self._connect() as connection:
+            for offset in range(0, len(unique), 500):
+                batch = unique[offset:offset + 500]
+                placeholders = ",".join("?" for _ in batch)
+                for row in connection.execute(f"SELECT relative_path, extension, size, mtime_ns, capture_date FROM photos WHERE relative_path IN ({placeholders})", batch):
+                    result[row["relative_path"]] = dict(row)
+        return result
 
     def validate_paths_for_date(
         self, capture_date: str, relative_paths: list[str]
@@ -812,65 +831,39 @@ class AnnotationStore:
         return {"places": places}
 
 
-class RefreshService:
-    def __init__(self, index_path: Path, source_finder: Callable[[], Path]):
+class RefreshService(BackgroundTask):
+    def __init__(
+        self, index_path: Path, source_finder: Callable[[], Path],
+        sources: list[PhotoSource] | None = None,
+        on_complete: Callable[[], None] | None = None,
+    ):
         self.index_path = index_path
         self.source_finder = source_finder
-        self._lock = threading.Lock()
-        self._status: dict[str, Any] = {
-            "state": "idle",
-            "started_at": None,
-            "finished_at": None,
-            "message": "",
-        }
+        self.sources = sources
+        self.on_complete = on_complete
+        super().__init__("更新照片索引", self._scan, {
+            "扫描目录": (0, .08), "检查照片缓存": (.08, .2), "读取拍摄日期": (.2, .95), "整理索引": (.95, .99),
+        })
 
-    def status(self) -> dict[str, Any]:
-        with self._lock:
-            return dict(self._status)
-
-    def start(self) -> bool:
-        with self._lock:
-            if self._status["state"] == "running":
-                return False
-            self._status = {
-                "state": "running",
-                "started_at": _now(),
-                "finished_at": None,
-                "message": "正在更新照片索引",
-            }
-        thread = threading.Thread(target=self._run, daemon=True)
-        thread.start()
-        return True
-
-    def _run(self) -> None:
-        try:
-            source_root = self.source_finder()
-            records, _, counters = scan_archive(source_root, self.index_path)
-            result = {
-                "state": "complete",
-                "started_at": self.status()["started_at"],
-                "finished_at": _now(),
-                "message": f"索引已更新，共 {len(records)} 张照片",
-                "counters": dict(counters),
-            }
-        except Exception as exc:
-            result = {
-                "state": "error",
-                "started_at": self.status()["started_at"],
-                "finished_at": _now(),
-                "message": str(exc),
-            }
-        with self._lock:
-            self._status = result
+    def _scan(self, progress: ProgressCallback) -> dict[str, Any]:
+        if self.sources is not None:
+            records, _, counters = scan_sources(self.sources, self.index_path, progress=progress, cache_report=self.cache_report)
+        else:
+            records, _, counters = scan_archive(self.source_finder(), self.index_path, progress=progress, cache_report=self.cache_report)
+        if self.on_complete is not None:
+            self.on_complete()
+        return {"message": f"索引已更新：复用 {counters['cached']:,} 张，更新 {counters['scanned']:,} 张", "counters": dict(counters)}
 
 
 def create_app(
     *,
-    index_path: Path | str = Path("data/photo_index.sqlite3"),
-    annotation_path: Path | str = Path("data/annotations.sqlite3"),
-    thumbnail_root: Path | str = Path("data/thumbnails"),
+    index_path: Path | str = Path("data/db/photo_index.sqlite3"),
+    annotation_path: Path | str = Path("data/db/annotations.sqlite3"),
+    thumbnail_root: Path | str = Path("data/cache/thumbnails"),
     local_ui_dist: Path | str | None = None,
     source_finder: Callable[[], Path] = find_source_root,
+    sources: list[PhotoSource] | None = None,
+    export_root: Path | str | None = None,
 ) -> Flask:
     app = Flask(__name__)
     photo_index = PhotoIndex(Path(index_path))
@@ -882,7 +875,10 @@ def create_app(
         if local_ui_dist is not None
         else Path(__file__).resolve().parents[2] / "apps" / "local-ui" / "dist"
     )
-    refresh_service = RefreshService(Path(index_path).resolve(), source_finder)
+    task_start_lock = threading.Lock()
+    cache_lock = threading.Lock()
+    preview_cache = JsonCache(thumbnail_root / "_previews", version=1)
+    export_root = Path(export_root).resolve() if export_root is not None else thumbnail_root.parent / "exports"
 
     def enrich_places(values: object) -> list[dict[str, Any]]:
         places = _clean_places(values)
@@ -913,7 +909,7 @@ def create_app(
                 )
         return places
 
-    def serve_cached_photo(
+    def create_cached_photo(
         relative_path: str,
         *,
         max_size: tuple[int, int],
@@ -924,20 +920,15 @@ def create_app(
         if record is None:
             abort(404)
         metadata = photo_index.metadata()
-        source_root = Path(metadata.get("source_root", "")).resolve()
-        source_path = (source_root / relative_path).resolve()
-        if not source_path.is_relative_to(source_root) or not source_path.is_file():
+        try:
+            source_path = resolve_photo_path(metadata, relative_path)
+        except (ValueError, FileNotFoundError):
             abort(404)
-        cache_key = hashlib.sha256(
-            (
-                f"{variant}|{relative_path}|{record['size']}|"
-                f"{record['mtime_ns']}"
-            ).encode("utf-8")
-        ).hexdigest()
-        cached = thumbnail_root / f"{cache_key}.jpg"
-        if not cached.exists():
+        cached = jpeg_cache_path(thumbnail_root, relative_path, record, variant)
+        if not nonempty_file(cached):
             previous_limit = Image.MAX_IMAGE_PIXELS
             Image.MAX_IMAGE_PIXELS = None
+            temporary = None
             try:
                 with Image.open(source_path) as source:
                     image = ImageOps.exif_transpose(source)
@@ -951,10 +942,27 @@ def create_app(
                         image = background
                     elif image.mode == "L":
                         image = image.convert("RGB")
-                    image.save(cached, "JPEG", quality=quality, optimize=True)
+                    with tempfile.NamedTemporaryFile(dir=thumbnail_root, suffix=".jpg", delete=False) as output:
+                        temporary = Path(output.name)
+                        image.save(output, "JPEG", quality=quality, optimize=True)
+                    temporary.replace(cached)
             finally:
                 Image.MAX_IMAGE_PIXELS = previous_limit
-        return send_file(cached, mimetype="image/jpeg", conditional=True)
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        return cached
+
+    def cache_photo(relative_path: str, **options):
+        # Serialize image decoding because Pillow's pixel limit is process-wide.
+        with cache_lock:
+            return create_cached_photo(relative_path, **options)
+
+    def serve_cached_photo(relative_path: str, **options):
+        return send_file(cache_photo(relative_path, **options), mimetype="image/jpeg", conditional=True)
+
+    def invalidate_products():
+        preview_service.invalidate()
+        public_export_service.invalidate()
 
     @app.errorhandler(ValueError)
     def handle_value_error(exc: ValueError):
@@ -1057,6 +1065,7 @@ def create_app(
                     **totals,
                 },
                 "source_root": metadata.get("source_root", ""),
+                "source_roots": [item["root"] for item in source_bindings(metadata).values()],
                 "refresh": refresh_service.status(),
             }
         )
@@ -1068,7 +1077,8 @@ def create_app(
         if photo_count == 0:
             abort(404)
         try:
-            limit = min(max(int(request.args.get("limit", "60")), 1), 200)
+            raw_limit = request.args.get("limit", "60")
+            limit = -1 if raw_limit == "all" else min(max(int(raw_limit), 1), 200)
             offset = max(int(request.args.get("offset", "0")), 0)
         except ValueError as exc:
             raise ValueError("照片分页参数必须是整数") from exc
@@ -1086,6 +1096,7 @@ def create_app(
             photo["thumbnail_url"] = url_for(
                 "photo_thumbnail", relative_path=photo["relative_path"]
             )
+            photo["preview_url"] = url_for("photo_preview_image", relative_path=photo["relative_path"])
             selected = featured.get(photo["relative_path"])
             photo["featured"] = selected is not None
             photo["caption"] = selected["caption"] if selected else ""
@@ -1144,6 +1155,7 @@ def create_app(
             reviewed=reviewed,
             featured_photos=featured_photos,
         )
+        invalidate_products()
         return jsonify(saved)
 
     @app.patch("/api/records/<capture_date>")
@@ -1171,6 +1183,7 @@ def create_app(
             reviewed=current["reviewed"],
             featured_photos=None,
         )
+        invalidate_products()
         return jsonify(saved)
 
     @app.delete("/api/records/<capture_date>")
@@ -1178,6 +1191,7 @@ def create_app(
         _parse_date(capture_date)
         if not annotations.delete(capture_date):
             return jsonify({"error": "该日期还没有标注记录"}), 404
+        invalidate_products()
         return jsonify({"deleted": capture_date})
 
     @app.put("/api/days/<capture_date>/featured")
@@ -1192,7 +1206,9 @@ def create_app(
         relative_paths = [item["relativePath"] for item in photos]
         if not photo_index.validate_paths_for_date(capture_date, relative_paths):
             raise ValueError("精选照片必须属于当前日期且存在于照片索引中")
-        return jsonify(annotations.save_featured(capture_date, photos))
+        saved = annotations.save_featured(capture_date, photos)
+        invalidate_products()
+        return jsonify(saved)
 
     @app.get("/api/options")
     def options():
@@ -1318,17 +1334,59 @@ def create_app(
             )
         return jsonify({"places": result})
 
-    @app.get("/api/trails-preview")
-    def trails_preview():
+    def build_trails_preview(progress: ProgressCallback | None = None) -> dict[str, Any]:
         trips: list[dict[str, Any]] = []
         warnings: list[str] = []
         city_keys: set[str] = set()
         country_codes: set[str] = set()
         featured_count = 0
 
-        for annotation in annotations.all():
-            if not annotation["isPublic"] or not annotation["featuredPhotos"]:
+        visible = [item for item in annotations.all() if item["isPublic"] and item["featuredPhotos"]]
+        records = photo_index.photos_by_paths([photo["relativePath"] for item in visible for photo in item["featuredPhotos"]])
+        selected_paths: set[str] = set()
+        reused_dates = 0
+        photo_urls = app.url_map.bind("localhost")
+        if progress:
+            progress("整理旅行记录", 0, len(visible))
+        for completed, annotation in enumerate(visible, 1):
+            day_paths = [photo["relativePath"] for photo in annotation["featuredPhotos"]]
+            signature = fingerprint({
+                "date": annotation["date"], "displayDate": annotation["displayDate"],
+                "places": [{key: place.get(key) for key in ("name", "city", "countryCode", "countryName")} for place in annotation["places"]],
+                "photos": [(path, records.get(path)) for path in day_paths],
+            })
+            cached = preview_cache.load(annotation["date"], signature) if progress else None
+            expected_paths = [path for path in day_paths if records.get(path, {}).get("capture_date") == annotation["date"]]
+            expected_photos = [{
+                "id": hashlib.sha256(f"{annotation['date']}|{path}".encode("utf-8")).hexdigest()[:20],
+                "src": photo_urls.build("photo_preview_image", {"relative_path": path}),
+                "thumbnail": photo_urls.build("photo_thumbnail", {"relative_path": path}),
+            } for path in expected_paths]
+            if cached is not None and valid_preview_entry(cached):
+                trip = cached["trip"]
+                matches = trip is None if not expected_paths else (
+                    trip is not None and trip["photos"] == expected_photos
+                    and trip["captureDate"] == annotation["date"] and trip["date"] == annotation["displayDate"]
+                    and trip["id"] == f"trip-{annotation['date']}" and trip["year"] == int(annotation["displayDate"][:4])
+                )
+                if not matches or cached["paths"] != expected_paths:
+                    cached = None
+            else:
+                cached = None
+            if cached is not None:
+                reused_dates += 1
+                if cached["trip"] is not None:
+                    trips.append(cached["trip"])
+                    featured_count += len(cached["trip"]["photos"])
+                warnings.extend(cached["warnings"])
+                city_keys.update(cached["cityKeys"])
+                country_codes.update(cached["countryCodes"])
+                selected_paths.update(cached["paths"])
+                progress("整理旅行记录", completed, len(visible))
                 continue
+            warnings_start = len(warnings)
+            day_city_keys: set[str] = set()
+            day_country_codes: set[str] = set()
             places = []
             for place in annotation["places"]:
                 city = str(place["city"] or "").strip()
@@ -1363,12 +1421,14 @@ def create_app(
                     if public_place["countryCode"]:
                         country_codes.add(public_place["countryCode"])
                         city_keys.add(f"{public_place['countryCode']}|{city}")
+                        day_country_codes.add(public_place["countryCode"])
+                        day_city_keys.add(f"{public_place['countryCode']}|{city}")
                 places.append(public_place)
 
             photos = []
             for selected in annotation["featuredPhotos"]:
                 relative_path = selected["relativePath"]
-                record = photo_index.photo(relative_path)
+                record = records.get(relative_path)
                 if record is None or record["capture_date"] != annotation["date"]:
                     warnings.append(
                         f"{annotation['date']}：精选照片已不在当天索引中"
@@ -1380,15 +1440,16 @@ def create_app(
                 photos.append(
                     {
                         "id": public_id,
-                        "src": url_for(
-                            "photo_preview_image", relative_path=relative_path
-                        ),
-                        "thumbnail": url_for(
-                            "photo_thumbnail", relative_path=relative_path
-                        ),
+                        "src": photo_urls.build("photo_preview_image", {"relative_path": relative_path}),
+                        "thumbnail": photo_urls.build("photo_thumbnail", {"relative_path": relative_path}),
                     }
                 )
+                selected_paths.add(relative_path)
+            if progress:
+                progress("整理旅行记录", completed, len(visible))
             if not photos:
+                if progress:
+                    preview_cache.save(annotation["date"], signature, {"trip": None, "warnings": warnings[warnings_start:], "paths": [], "cityKeys": sorted(day_city_keys), "countryCodes": sorted(day_country_codes)})
                 continue
 
             title_parts = []
@@ -1407,20 +1468,108 @@ def create_app(
                 }
             )
             featured_count += len(photos)
+            if progress:
+                preview_cache.save(annotation["date"], signature, {"trip": trips[-1], "warnings": warnings[warnings_start:], "paths": expected_paths, "cityKeys": sorted(day_city_keys), "countryCodes": sorted(day_country_codes)})
 
         trips.sort(key=lambda item: item["date"], reverse=True)
-        return jsonify(
-            {
-                "summary": {
-                    "tripDays": len(trips),
-                    "cities": len(city_keys),
-                    "countries": len(country_codes),
-                    "featuredPhotos": featured_count,
-                },
-                "trips": trips,
-                "warnings": sorted(set(warnings)),
-            }
-        )
+        if progress:
+            metadata = photo_index.metadata()
+            pending = []
+            progress("检查精选图片缓存", 0, len(selected_paths))
+            for completed, relative_path in enumerate(sorted(selected_paths), 1):
+                resolve_photo_path(metadata, relative_path)
+                record = records[relative_path]
+                if not all(nonempty_file(jpeg_cache_path(thumbnail_root, relative_path, record, variant)) for variant in ("thumbnail-v1", "preview-v1")):
+                    pending.append(relative_path)
+                progress("检查精选图片缓存", completed, len(selected_paths))
+            preview_service.cache_report(len(selected_paths) - len(pending), len(selected_paths), "张精选照片")
+            progress("生成精选图片缓存", 0, len(pending))
+            for completed, relative_path in enumerate(pending, 1):
+                cache_photo(relative_path, max_size=(480, 360), quality=84, variant="thumbnail-v1")
+                cache_photo(relative_path, max_size=(1600, 1200), quality=88, variant="preview-v1")
+                progress("生成精选图片缓存", completed, len(pending))
+        if progress:
+            preview_stats.update({"dates_reused": reused_dates, "dates_updated": len(visible) - reused_dates})
+        return {
+            "summary": {
+                "tripDays": len(trips), "cities": len(city_keys),
+                "countries": len(country_codes), "featuredPhotos": featured_count,
+            },
+            "trips": trips, "warnings": sorted(set(warnings)),
+        }
+
+    def generate_preview(progress: ProgressCallback) -> dict[str, Any]:
+        payload = build_trails_preview(progress)
+        summary = payload["summary"]
+        return {
+            "data": payload,
+            "message": f"旅行预览已生成：复用 {preview_stats['dates_reused']} 个日期，更新 {preview_stats['dates_updated']} 个日期，{summary['featuredPhotos']} 张精选",
+            "counters": dict(preview_stats),
+        }
+
+    preview_stats: dict[str, int] = {}
+    preview_service = BackgroundTask("生成旅行预览", generate_preview, {
+        "整理旅行记录": (0, .15), "检查精选图片缓存": (.15, .25), "生成精选图片缓存": (.25, .99),
+    })
+    refresh_service = RefreshService(
+        Path(index_path).resolve(), source_finder, sources, on_complete=invalidate_products,
+    )
+    public_export_service = BackgroundTask(
+        "导出公开产物",
+        lambda progress: release_data(photo_index.path, annotations.path, export_root, progress, public_export_service.cache_report),
+        EXPORT_PHASES,
+    )
+    tasks = (refresh_service, preview_service, public_export_service)
+
+    @app.get("/api/trails-preview")
+    def trails_preview():
+        if request.args.get("cached") == "1":
+            result = preview_service.result()
+            if result is None:
+                return jsonify({"error": "旅行预览尚未生成或已过期"}), 409
+            return jsonify(result["data"])
+        return jsonify(build_trails_preview())
+
+    def start_task(task: BackgroundTask):
+        with task_start_lock:
+            if any(other is not task and other.status()["state"] == "running" for other in tasks):
+                return jsonify({**task.status(), "error": "请等待另一项任务完成"}), 409
+            if task.status()["state"] == "running":
+                return jsonify({**task.status(), "error": "该任务正在运行"}), 409
+            if task is refresh_service:
+                invalidate_products()
+            elif task is public_export_service:
+                public_export_service.invalidate()
+            if not task.start():
+                return jsonify({**task.status(), "error": "该任务正在运行"}), 409
+        return jsonify(task.status()), 202
+
+    @app.post("/api/trails-preview/refresh")
+    def refresh_preview():
+        return start_task(preview_service)
+
+    @app.get("/api/trails-preview/status")
+    def preview_status():
+        return jsonify(preview_service.status())
+
+    @app.post("/api/public-export/refresh")
+    def refresh_public_export():
+        return start_task(public_export_service)
+
+    @app.get("/api/public-export/status")
+    def public_export_status():
+        return jsonify(public_export_service.status())
+
+    @app.get("/api/public-export/files/<filename>")
+    def public_export_file(filename: str):
+        if filename not in ARTIFACTS:
+            abort(404)
+        if public_export_service.status()["state"] != "complete" or public_export_service.result() is None:
+            return jsonify({"error": "公开产物尚未完成或已过期，请重新导出"}), 409
+        target = export_root / filename
+        if target.is_symlink() or target.resolve().parent != export_root.resolve() or not target.is_file():
+            abort(404)
+        return send_file(target, as_attachment=True, download_name=filename)
 
     @app.get("/api/photos/<path:relative_path>/thumbnail")
     def photo_thumbnail(relative_path: str):
@@ -1442,8 +1591,7 @@ def create_app(
 
     @app.post("/api/index/refresh")
     def refresh_index():
-        started = refresh_service.start()
-        return jsonify(refresh_service.status()), 202 if started else 409
+        return start_task(refresh_service)
 
     @app.get("/api/index/status")
     def refresh_status():
@@ -1452,18 +1600,23 @@ def create_app(
     app.extensions["photo_index"] = photo_index
     app.extensions["annotation_store"] = annotations
     app.extensions["refresh_service"] = refresh_service
+    app.extensions["preview_service"] = preview_service
+    app.extensions["public_export_service"] = public_export_service
     return app
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the local photo timeline app")
+    parser.add_argument("--config", type=Path, help="项目的 config/local.yaml")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--source", type=Path, help="原始照片目录，只读")
-    parser.add_argument("--index", type=Path, default=Path("data/photo_index.sqlite3"))
+    parser.add_argument("--index", type=Path, default=Path("data/db/photo_index.sqlite3"))
     parser.add_argument(
-        "--annotations", type=Path, default=Path("data/annotations.sqlite3")
+        "--annotations", type=Path, default=Path("data/db/annotations.sqlite3")
     )
+    parser.add_argument("--thumbnails", type=Path, default=Path("data/cache/thumbnails"))
+    parser.add_argument("--exports", type=Path, default=Path("data/exports"))
     return parser
 
 
@@ -1479,16 +1632,31 @@ def _port_is_in_use(host: str, port: int) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    sources = None
+    if args.config is not None:
+        config_path = args.config.resolve()
+        if config_path.name != "local.yaml" or config_path.parent.name != "config":
+            parser.error("配置路径必须为 Moments 内的 config/local.yaml")
+        config = load_config(config_path.parent.parent)
+        sources = config.resolve_sources()
+        args.host, args.port = config.host, config.port
+        args.index, args.annotations, args.thumbnails = config.index, config.annotations, config.thumbnails
+        args.exports = config.exports
     if _port_is_in_use(args.host, args.port):
         parser.error(
             f"端口 {args.port} 已被占用；请先关闭旧服务，"
             "或使用 --port 指定其他端口"
         )
     source_finder = (lambda: args.source.resolve()) if args.source else find_source_root
+    if sources is not None:
+        bind_index_sources(args.index, sources)
     app = create_app(
         index_path=args.index,
         annotation_path=args.annotations,
+        thumbnail_root=args.thumbnails,
         source_finder=source_finder,
+        sources=sources,
+        export_root=args.exports,
     )
     app.run(host=args.host, port=args.port, debug=False, use_reloader=False, threaded=True)
     return 0

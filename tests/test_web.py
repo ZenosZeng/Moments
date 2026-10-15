@@ -27,7 +27,7 @@ def _write_jpeg(path: Path, capture_time: str) -> None:
     image.save(path, exif=exif)
 
 
-def _build_app(tmp_path: Path):
+def _build_app(tmp_path: Path, *, local_ui_dist: Path | None = None):
     source = tmp_path / "photos test"
     _write_jpeg(source / "202405_a" / "one.jpg", "2024:05:02 10:00:00")
     _write_jpeg(source / "202405_a" / "two.jpg", "2024:05:02 11:00:00")
@@ -43,6 +43,7 @@ def _build_app(tmp_path: Path):
         annotation_path=annotations,
         thumbnail_root=thumbnails,
         source_finder=lambda: source,
+        local_ui_dist=local_ui_dist,
     )
     app.config.update(TESTING=True)
     return app, source, annotations
@@ -343,12 +344,12 @@ def test_thumbnail_is_cached_without_modifying_source(tmp_path: Path) -> None:
 
 
 def test_dashboard_and_invalid_inputs(tmp_path: Path) -> None:
-    app, _, _ = _build_app(tmp_path)
+    app, _, _ = _build_app(tmp_path, local_ui_dist=tmp_path / "unbuilt-ui")
     client = app.test_client()
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
-    assert "Moments Studio" in dashboard.get_data(as_text=True)
+    assert "Moments · 方舟旅迹" in dashboard.get_data(as_text=True)
     assert client.get("/api/overview?month=not-a-month").status_code == 400
     assert client.get("/api/days/not-a-date").status_code == 400
 
@@ -574,6 +575,186 @@ def test_annotation_schema_migration_keeps_existing_rows(tmp_path: Path) -> None
     assert migrated["tripTitle"] == ""
     assert migrated["isPublic"] is False
     assert migrated["featuredPhotos"] == []
+
+
+def test_day_can_return_all_photos_and_preview_urls(tmp_path: Path) -> None:
+    app, _, _ = _build_app(tmp_path)
+    import sqlite3
+
+    with sqlite3.connect(tmp_path / "photo-index.sqlite3") as connection:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(photos)")]
+        row = list(connection.execute("SELECT * FROM photos WHERE relative_path = '202405_a/one.jpg'").fetchone())
+        path_index = columns.index("relative_path")
+        values = []
+        for number in range(205):
+            copy = list(row)
+            copy[path_index] = f"202405_a/synthetic-{number}.jpg"
+            values.append(copy)
+        connection.executemany(f"INSERT INTO photos VALUES ({','.join('?' for _ in columns)})", values)
+    client = app.test_client()
+    payload = client.get("/api/days/2024-05-02?limit=all").get_json()
+    assert payload["photos_returned"] == payload["photos_total"] > 200
+    assert all(photo["preview_url"].endswith("/preview") for photo in payload["photos"])
+    assert client.get(payload["photos"][0]["preview_url"]).status_code == 200
+    assert client.get("/api/days/2024-05-02?limit=1").get_json()["photos_returned"] == 1
+
+
+def test_background_preview_prepares_cached_snapshot_and_invalidates_after_save(tmp_path: Path) -> None:
+    from test_background_tasks import wait_finished
+
+    app, source, _ = _build_app(tmp_path)
+    client = app.test_client()
+    payload = {"places": [{"city": "深圳"}], "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}], "isPublic": True}
+    assert client.put("/api/days/2024-05-02/annotation", json=payload).status_code == 200
+    assert client.get("/api/trails-preview?cached=1").status_code == 409
+    before = (source / "202405_a/one.jpg").stat()
+    assert client.post("/api/trails-preview/refresh").status_code == 202
+    status = wait_finished(app.extensions["preview_service"])
+    assert status["state"] == "complete" and status["ready"]
+    assert status["completed"] == status["total"] == 1
+    result = client.get("/api/trails-preview?cached=1").get_json()
+    assert result["summary"]["featuredPhotos"] == 1
+    cached = list((tmp_path / "thumbnails").glob("*.jpg"))
+    assert len(cached) == 2
+    cache_times = {item.name: item.stat().st_mtime_ns for item in cached}
+    assert client.post("/api/trails-preview/refresh").status_code == 202
+    assert wait_finished(app.extensions["preview_service"])["state"] == "complete"
+    assert {item.name: item.stat().st_mtime_ns for item in cached} == cache_times
+    after = (source / "202405_a/one.jpg").stat()
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+    payload["places"] = [{"city": "广州"}]
+    assert client.put("/api/days/2024-05-02/annotation", json=payload).status_code == 200
+    assert not client.get("/api/trails-preview/status").get_json()["ready"]
+    assert client.get("/api/trails-preview?cached=1").status_code == 409
+    assert client.get("/api/trails-preview").get_json()["trips"][0]["places"][0]["city"] == "广州"
+
+
+def test_index_preview_and_export_tasks_do_not_overlap(tmp_path: Path) -> None:
+    import threading
+    from test_background_tasks import wait_finished
+
+    app, _, _ = _build_app(tmp_path)
+    task = app.extensions["refresh_service"]
+    entered, release = threading.Event(), threading.Event()
+
+    def worker(progress):
+        progress("读取拍摄日期", 1, 2)
+        entered.set()
+        assert release.wait(5)
+        return {"message": "已完成"}
+
+    task.worker = worker
+    client = app.test_client()
+    assert client.post("/api/index/refresh").status_code == 202
+    try:
+        assert entered.wait(5)
+        assert client.post("/api/index/refresh").status_code == 409
+        assert client.post("/api/trails-preview/refresh").status_code == 409
+        assert client.post("/api/public-export/refresh").status_code == 409
+        assert client.get("/api/index/status").get_json()["completed"] == 1
+    finally:
+        release.set()
+    assert wait_finished(task)["state"] == "complete"
+
+
+def test_preview_reuses_date_cache_across_app_restarts_and_only_updates_changed_day(tmp_path, monkeypatch):
+    from test_background_tasks import wait_finished
+    import pic_timeline.web as web
+
+    app, source, annotations = _build_app(tmp_path)
+    client = app.test_client()
+    payload = {"places": [{"city": "深圳"}], "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}], "isPublic": True}
+    assert client.put("/api/days/2024-05-02/annotation", json=payload).status_code == 200
+    client.post("/api/trails-preview/refresh")
+    assert wait_finished(app.extensions["preview_service"])["state"] == "complete"
+    restarted = create_app(index_path=tmp_path / "photo-index.sqlite3", annotation_path=annotations, thumbnail_root=tmp_path / "thumbnails", source_finder=lambda: source)
+    client = restarted.test_client()
+    original = web.infer_city
+    calls = []
+
+    def locate(city):
+        calls.append(city)
+        return original(city)
+
+    monkeypatch.setattr(web, "infer_city", locate)
+    client.post("/api/trails-preview/refresh")
+    status = wait_finished(restarted.extensions["preview_service"])
+    assert status["state"] == "complete" and not calls
+    assert status["counters"] == {"dates_reused": 1, "dates_updated": 0}
+    assert status["cache"]["reused"] == 1 and status["cache"]["pending"] == 0
+    payload["places"] = [{"city": "广州"}]
+    client.put("/api/days/2024-05-02/annotation", json=payload)
+    calls.clear()
+    client.post("/api/trails-preview/refresh")
+    status = wait_finished(restarted.extensions["preview_service"])
+    assert status["counters"]["dates_updated"] == 1
+    assert calls == ["广州"]
+    assert status["cache"]["pending"] == 0
+
+
+def test_gui_export_creates_only_public_attachments_and_protects_private_files(tmp_path):
+    from test_background_tasks import wait_finished
+    import hashlib
+    import zipfile
+    from io import BytesIO
+
+    app, source, _ = _build_app(tmp_path)
+    client = app.test_client()
+    payload = {"places": [{"city": "深圳"}], "featuredPhotos": [{"relativePath": "202405_a/one.jpg"}], "isPublic": True}
+    assert client.put("/api/days/2024-05-02/annotation", json=payload).status_code == 200
+    before = (source / "202405_a/one.jpg").stat()
+    assert client.get("/api/public-export/files/public-data.zip").status_code == 409
+    assert client.post("/api/public-export/refresh").status_code == 202
+    status = wait_finished(app.extensions["public_export_service"])
+    assert status["state"] == "complete" and status["ready"]
+    assert status["artifacts"] == ["public-data.zip", "public-data.zip.sha256"]
+    data = client.get("/api/public-export/files/public-data.zip").data
+    checksum = client.get("/api/public-export/files/public-data.zip.sha256").data.decode("ascii")
+    assert checksum.split()[0] == hashlib.sha256(data).hexdigest()
+    with zipfile.ZipFile(BytesIO(data)) as archive:
+        assert len(archive.namelist()) == 3
+        assert "data/trips.json" in archive.namelist()
+        assert all(name == "data/trips.json" or name.endswith(".webp") for name in archive.namelist())
+        assert "relativePath" not in archive.read("data/trips.json").decode("utf-8")
+    assert client.get("/api/public-export/files/annotations.sqlite3").status_code == 404
+    after = (source / "202405_a/one.jpg").stat()
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+    client.post("/api/public-export/refresh")
+    status = wait_finished(app.extensions["public_export_service"])
+    assert status["counters"] == {"reused": 1, "generated": 0}
+    payload["isPublic"] = False
+    client.put("/api/days/2024-05-02/annotation", json=payload)
+    assert client.get("/api/public-export/files/public-data.zip").status_code == 409
+
+
+def test_save_during_gui_export_marks_completed_result_stale(tmp_path):
+    import threading
+    from test_background_tasks import wait_finished
+
+    app, _, _ = _build_app(tmp_path)
+    task = app.extensions["public_export_service"]
+    entered, release = threading.Event(), threading.Event()
+
+    def worker(progress):
+        progress("读取导出快照", 2, 2)
+        entered.set()
+        assert release.wait(5)
+        return {"message": "已完成", "artifacts": ["public-data.zip", "public-data.zip.sha256"]}
+
+    task.worker = worker
+    client = app.test_client()
+    assert client.post("/api/public-export/refresh").status_code == 202
+    try:
+        assert entered.wait(5)
+        assert client.post("/api/public-export/refresh").status_code == 409
+        assert client.post("/api/index/refresh").status_code == 409
+        assert client.post("/api/trails-preview/refresh").status_code == 409
+        assert client.put("/api/days/2024-05-02/annotation", json={"places": [{"city": "深圳"}]}).status_code == 200
+    finally:
+        release.set()
+    status = wait_finished(task)
+    assert status["state"] == "complete" and status["stale"] and not status["ready"]
+    assert client.get("/api/public-export/files/public-data.zip").status_code == 409
 
 
 @pytest.mark.parametrize("field", ["people", "person", "companion", "publicName", "public_name"])

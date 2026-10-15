@@ -12,20 +12,22 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from .city_country import country_from_code, infer_country
-from .public_package import PRIVATE_IDENTITY_FIELDS
+from .public_package import PRIVATE_IDENTITY_FIELDS, PRIVATE_PATH_FIELDS
+from .photo_sources import resolve_photo_path
 from .web import AnnotationStore
 
 register_heif_opener()
 
 FORBIDDEN_JSON_FIELDS = {
     *PRIVATE_IDENTITY_FIELDS,
+    *PRIVATE_PATH_FIELDS,
     "caption",
     "description",
     "itinerary",
@@ -221,16 +223,6 @@ def _indexed_photo(
     return row
 
 
-def _safe_source_path(source_root: Path, relative_path: str) -> Path:
-    normalized = PurePosixPath(relative_path.replace("\\", "/"))
-    if normalized.is_absolute() or ".." in normalized.parts:
-        raise ValueError("精选照片包含不安全路径")
-    source_path = source_root.joinpath(*normalized.parts).resolve()
-    if not source_path.is_relative_to(source_root) or not source_path.is_file():
-        raise FileNotFoundError("精选照片原文件不存在")
-    return source_path
-
-
 def _rgb_copy(image: Image.Image) -> Image.Image:
     if image.mode == "RGB":
         return image.copy()
@@ -408,7 +400,7 @@ def build_public_manifest(
     cache_root: Path | None = None,
     stats: ExportStats | None = None,
 ) -> dict[str, Any]:
-    source_root = _source_root(index_path)
+    _source_root(index_path)
     rows = _public_rows(annotation_path)
     (stage_root / "data").mkdir(parents=True, exist_ok=True)
     media_root = stage_root / "media"
@@ -421,6 +413,7 @@ def build_public_manifest(
         _connect(annotation_path, readonly=True) as annotation_db,
         _connect(index_path, readonly=True) as index_db,
     ):
+        source_metadata = dict(index_db.execute("SELECT key, value FROM metadata"))
         total_photo_count = _public_photo_count(annotation_db)
         planned_photos: dict[str, list[PlannedPhoto]] = {}
         if write_images and progress:
@@ -433,7 +426,7 @@ def build_public_manifest(
                 indexed = _indexed_photo(
                     index_db, capture_date, selected["relative_path"]
                 )
-                source_path = _safe_source_path(source_root, indexed["relative_path"])
+                source_path = resolve_photo_path(source_metadata, indexed["relative_path"])
                 public_id = _public_photo_id(capture_date, indexed)
                 cached = (
                     _cached_webp_pair(cache_root, public_id)
@@ -657,12 +650,12 @@ def export_public(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="导出公开旅行时间线与精选照片")
-    parser.add_argument("--index", type=Path, default=Path("data/photo_index.sqlite3"))
+    parser.add_argument("--index", type=Path, default=Path("data/db/photo_index.sqlite3"))
     parser.add_argument(
-        "--annotations", type=Path, default=Path("data/annotations.sqlite3")
+        "--annotations", type=Path, default=Path("data/db/annotations.sqlite3")
     )
     parser.add_argument(
-        "--output", type=Path, default=Path("exports/public-data")
+        "--output", type=Path, default=Path("data/exports/public-data")
     )
     parser.add_argument("--dry-run", action="store_true", help="仅校验并列出导出数量")
     return parser

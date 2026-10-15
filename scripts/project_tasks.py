@@ -10,6 +10,9 @@ import time
 from pathlib import Path
 
 from pic_timeline.public_package import pack_public_data
+from pic_timeline.configuration import load_config
+from pic_timeline.photo_sources import bind_index_sources
+from pic_timeline.local_cache import export_lock
 
 
 STUDIO_ROOT = Path(__file__).resolve().parents[1]
@@ -83,10 +86,17 @@ def _studio_frontend_is_stale() -> bool:
 
 
 def run_app(arguments: list[str]) -> None:
+    if arguments:
+        raise ValueError("启动参数请统一写入 config/local.yaml，然后使用 pixi run app")
+    config = load_config(STUDIO_ROOT)
+    config.resolve_sources()
     _ensure_node_modules(STUDIO_ROOT)
     if _studio_frontend_is_stale():
         _run([_npm(), "run", "build"], cwd=STUDIO_ROOT)
-    _run([sys.executable, "-m", "pic_timeline.web", *arguments], cwd=STUDIO_ROOT)
+    _run(
+        [sys.executable, "-m", "pic_timeline.web", "--config", str(STUDIO_ROOT / "config" / "local.yaml")],
+        cwd=STUDIO_ROOT,
+    )
 
 
 def test_all() -> None:
@@ -128,11 +138,18 @@ def _prepare_demo() -> None:
 
 
 def release_local(arguments: list[str]) -> None:
-    parser = argparse.ArgumentParser(description="生成本地公开数据包与静态网站，不上传")
-    parser.add_argument("--base", default="/Moments/", help="静态网站路径，默认 /Moments/；自定义域名可用 /")
-    parser.add_argument("--index", type=Path, default=Path("data/photo_index.sqlite3"))
-    parser.add_argument("--annotations", type=Path, default=Path("data/annotations.sqlite3"))
-    args = parser.parse_args(arguments)
+    if arguments:
+        raise ValueError("导出参数请统一写入 config/local.yaml，然后使用 pixi run release")
+    config = load_config(STUDIO_ROOT)
+    sources = config.resolve_sources()
+    if not config.index.is_file() or not config.annotations.is_file():
+        raise FileNotFoundError("缺少本地数据库，请先用 pixi run app 刷新索引并保存标注")
+    bind_index_sources(config.index, sources)
+    with export_lock(config.exports):
+        _release_local(config)
+
+
+def _release_local(config) -> None:
     total_steps = 5
 
     def step(number: int, label: str) -> None:
@@ -144,25 +161,28 @@ def release_local(arguments: list[str]) -> None:
     step(2, "生成脱敏 JSON 与 WebP")
     _run(
         [sys.executable, "-m", "pic_timeline.export_public",
-         "--index", str(args.index.resolve()),
-         "--annotations", str(args.annotations.resolve())],
+         "--index", str(config.index),
+         "--annotations", str(config.annotations),
+         "--output", str(config.exports / "public-data")],
         cwd=STUDIO_ROOT,
     )
     step(3, "导入公开数据包并定位城市")
-    _run_public("npm", "run", "import-data")
+    _run_public("npm", "run", "import-data", "--", str(config.exports / "public-data"))
     step(4, "构建静态网站")
-    _run_public("npm", "run", "build", "--", "--base", args.base)
+    _run_public("npm", "run", "build", "--", "--base", config.base_path)
     step(5, "审计并打包本地公开产物")
     _run_public("npm", "run", "audit")
-    exports = STUDIO_ROOT / "exports"
+    exports = config.exports
     site = exports / "site"
+    if not site.resolve().is_relative_to(exports):
+        raise ValueError("网站输出路径超出配置的导出目录")
     if site.exists():
         shutil.rmtree(site)
     shutil.copytree(PUBLIC_ROOT / "dist", site)
     shutil.make_archive(str(exports / "site"), "zip", site)
     checksum = pack_public_data(exports / "public-data", exports / "public-data.zip")
     print(
-        f"\n本地 release 完成：exports/site/、site.zip、public-data.zip 和 {checksum.name}。"
+        f"\n本地 release 完成：{exports}/（site/、site.zip、public-data.zip 和 {checksum.name}）。"
         "未执行 Git 提交、推送、Release 上传或 GitHub Pages 发布。",
         flush=True,
     )
@@ -174,12 +194,15 @@ def main() -> int:
     args, remaining = parser.parse_known_args()
     if remaining[:1] == ["--"]:
         remaining = remaining[1:]
-    if args.command == "app":
-        run_app(remaining)
-    elif args.command == "test":
-        test_all()
-    else:
-        release_local(remaining)
+    try:
+        if args.command == "app":
+            run_app(remaining)
+        elif args.command == "test":
+            test_all()
+        else:
+            release_local(remaining)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     return 0
 
 

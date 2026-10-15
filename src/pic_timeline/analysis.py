@@ -22,6 +22,10 @@ import matplotlib.pyplot as plt
 from PIL import ExifTags, Image
 from pillow_heif import register_heif_opener
 
+from .photo_sources import PhotoSource, binding_for_key, register_sources, source_bindings
+from .background_tasks import ProgressCallback
+from .local_cache import CacheReport
+
 register_heif_opener()
 
 DEFAULT_SOURCE_PARENT = Path.home() / "Pictures"
@@ -192,7 +196,12 @@ def month_sequence(start_month: str, end_month: str) -> list[str]:
     return result
 
 
-def _connect_index(index_path: Path, source_root: Path) -> sqlite3.Connection:
+def _connect_index(
+    index_path: Path,
+    source_root: Path,
+    *,
+    sources: list[PhotoSource] | None = None,
+) -> sqlite3.Connection:
     index_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(index_path)
     connection.row_factory = sqlite3.Row
@@ -244,6 +253,23 @@ def _connect_index(index_path: Path, source_root: Path) -> sqlite3.Connection:
     current_schema = connection.execute(
         "SELECT value FROM metadata WHERE key = 'schema_version'"
     ).fetchone()
+    if sources is not None:
+        try:
+            if current_schema is not None and current_schema["value"] != schema_version:
+                raise ValueError("旧索引版本不兼容，请先备份并使用新的索引文件")
+            register_sources(connection, sources)
+            connection.execute(
+                "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
+                (schema_version,),
+            )
+            connection.commit()
+            return connection
+        except Exception:
+            connection.close()
+            raise
+    if current_library is not None and current_library["value"] == "multi-source-v1":
+        connection.close()
+        raise ValueError("多源索引不能用单目录扫描，请使用 pixi run app 刷新索引")
     if (
         (current_library is not None and current_library["value"] != library_id)
         or current_schema is None
@@ -299,41 +325,124 @@ def scan_archive(
     index_path: Path,
     *,
     refresh: bool = False,
+    progress: ProgressCallback | None = None,
+    cache_report: CacheReport | None = None,
 ) -> tuple[list[PhotoRecord], list[str], Counter[str]]:
-    source_root = source_root.resolve()
     if not source_root.is_dir():
         raise FileNotFoundError(f"Source directory does not exist: {source_root}")
-
-    month_folders: list[tuple[Path, str]] = []
-    for folder in sorted(source_root.iterdir(), key=lambda item: item.name.lower()):
-        match = FOLDER_PATTERN.match(folder.name) if folder.is_dir() else None
-        if match:
-            month_folders.append((folder, match.group("month")))
-    if not month_folders:
-        raise ValueError(f"No monthly folders found under: {source_root}")
-
     connection = _connect_index(index_path, source_root)
+    return _scan_bindings(
+        connection,
+        {"single": {"root": str(source_root.resolve()), "prefix": ""}},
+        {"single"},
+        refresh=refresh,
+        progress=progress,
+        cache_report=cache_report,
+    )
+
+
+def scan_sources(
+    sources: list[PhotoSource],
+    index_path: Path,
+    *,
+    refresh: bool = False,
+    progress: ProgressCallback | None = None,
+    cache_report: CacheReport | None = None,
+) -> tuple[list[PhotoRecord], list[str], Counter[str]]:
+    if not sources:
+        raise ValueError("至少配置一个原图目录")
+    connection = _connect_index(index_path, sources[0].root, sources=sources)
+    metadata = dict(connection.execute("SELECT key, value FROM metadata"))
+    return _scan_bindings(
+        connection, source_bindings(metadata), {s.id for s in sources}, refresh=refresh, progress=progress, cache_report=cache_report
+    )
+
+
+def _scan_bindings(
+    connection: sqlite3.Connection,
+    bindings: dict[str, dict[str, str]],
+    active_ids: set[str],
+    *,
+    refresh: bool,
+    progress: ProgressCallback | None = None,
+    cache_report: CacheReport | None = None,
+) -> tuple[list[PhotoRecord], list[str], Counter[str]]:
+    try:
+        return _scan_bound_archives(connection, bindings, active_ids, refresh=refresh, progress=progress, cache_report=cache_report)
+    finally:
+        connection.close()
+
+
+def _scan_bound_archives(
+    connection: sqlite3.Connection,
+    bindings: dict[str, dict[str, str]],
+    active_ids: set[str],
+    *,
+    refresh: bool,
+    progress: ProgressCallback | None = None,
+    cache_report: CacheReport | None = None,
+) -> tuple[list[PhotoRecord], list[str], Counter[str]]:
+    month_folders: list[tuple[Path, str, Path, str]] = []
+    for source_id, binding in bindings.items():
+        if source_id not in active_ids:
+            continue
+        source_root = Path(binding["root"]).resolve()
+        if not source_root.is_dir():
+            raise FileNotFoundError(f"Source directory does not exist: {source_root}")
+        source_months = []
+        for folder in sorted(source_root.iterdir(), key=lambda item: item.name.lower()):
+            match = FOLDER_PATTERN.match(folder.name) if folder.is_dir() else None
+            if match:
+                source_months.append((folder, match.group("month"), source_root, binding["prefix"]))
+        if not source_months:
+            raise ValueError(f"No monthly folders found under: {source_root}")
+        month_folders.extend(source_months)
+    inventory: list[tuple[Path, str, Path, str, list[Path]]] = []
+    total_files = 0
+    if progress:
+        progress("扫描目录", 0, len(month_folders))
+    for completed, (folder, source_month, source_root, prefix) in enumerate(month_folders, 1):
+        files = sorted(
+            (item for item in folder.rglob("*") if item.is_file() and item.suffix.lower() in PHOTO_EXTENSIONS),
+            key=lambda item: str(item).lower(),
+        )
+        inventory.append((folder, source_month, source_root, prefix, files))
+        total_files += len(files)
+        if progress:
+            progress("扫描目录", completed, len(month_folders))
+    cached_rows = {row["relative_path"]: row for row in connection.execute("SELECT * FROM photos")}
+    planned = {}
+    reused = 0
+    if progress:
+        progress("检查照片缓存", 0, total_files)
+    for folder, source_month, source_root, prefix, files in inventory:
+        for path in files:
+            if not path.resolve().is_relative_to(source_root):
+                raise ValueError("原图中的链接不能指向照片源目录外")
+            relative_path = prefix + path.relative_to(source_root).as_posix()
+            stat = path.stat()
+            cached = cached_rows.get(relative_path)
+            if refresh or cached is None or cached["size"] != stat.st_size or cached["mtime_ns"] != stat.st_mtime_ns or cached["extraction_error"]:
+                cached = None
+            else:
+                reused += 1
+            planned[relative_path] = (stat, cached)
+            if progress:
+                progress("检查照片缓存", len(planned), total_files)
+    if cache_report:
+        cache_report(reused, total_files, "张照片")
+    pending_files = total_files - reused
     records: list[PhotoRecord] = []
     seen: set[str] = set()
     counters: Counter[str] = Counter()
     try:
-        for folder, source_month in month_folders:
-            files = sorted(
-                (
-                    item
-                    for item in folder.rglob("*")
-                    if item.is_file() and item.suffix.lower() in PHOTO_EXTENSIONS
-                ),
-                key=lambda item: str(item).lower(),
-            )
+        if progress:
+            progress("读取拍摄日期", 0, pending_files)
+        for folder, source_month, source_root, prefix, files in inventory:
             for path in files:
-                relative_path = path.relative_to(source_root).as_posix()
+                relative_path = prefix + path.relative_to(source_root).as_posix()
                 seen.add(relative_path)
-                stat = path.stat()
-                cached = connection.execute(
-                    "SELECT * FROM photos WHERE relative_path = ?",
-                    (relative_path,),
-                ).fetchone()
+                stat, cached = planned[relative_path]
                 if (
                     not refresh
                     and cached is not None
@@ -385,12 +494,20 @@ def scan_archive(
                     _upsert_record(connection, record)
                     counters["scanned"] += 1
                 records.append(record)
+                if progress and cached is None:
+                    progress("读取拍摄日期", counters["scanned"], pending_files)
                 if len(records) % 1000 == 0:
                     print(f"Indexed {len(records)} photos...", flush=True)
             connection.commit()
 
+        if progress:
+            progress("整理索引", 0, 1)
         stale_rows = connection.execute("SELECT relative_path FROM photos").fetchall()
-        stale = [row["relative_path"] for row in stale_rows if row["relative_path"] not in seen]
+        stale = [
+            row["relative_path"] for row in stale_rows
+            if binding_for_key(bindings, row["relative_path"])[0] in active_ids
+            and row["relative_path"] not in seen
+        ]
         if stale:
             connection.executemany(
                 "DELETE FROM photos WHERE relative_path = ?",
@@ -398,10 +515,13 @@ def scan_archive(
             )
             counters["removed_from_index"] = len(stale)
         connection.commit()
-    finally:
-        connection.close()
+        if progress:
+            progress("整理索引", 1, 1)
+    except Exception:
+        connection.rollback()
+        raise
 
-    source_months = sorted({month for _, month in month_folders})
+    source_months = sorted({month for _, month, _, _ in month_folders})
     return records, source_months, counters
 
 
