@@ -6,6 +6,7 @@ import {
   CircleAlert,
   LocateFixed,
   MapPin,
+  Pencil,
   X,
   ZoomIn,
   ZoomOut
@@ -411,52 +412,40 @@ onBeforeUnmount(() => { previewRequest += 1; closePhoto(); });
       <div v-if="!loading && !segments.length" class="preview-empty">
         <MapPin :size="32" /><h2>暂无可预览的旅行记录</h2><p>日期需要允许公开并至少选择一张精选照片。</p>
       </div>
-      <div v-else class="git-timeline">
+      <div v-else class="journey-timeline">
         <article
           v-for="segment in segments"
           :key="segment.id"
-          class="git-entry"
+          class="journey-entry"
+          :aria-label="`${segment.dateLabel} ${segmentCity(segment)}`"
           :style="timelineStyle(segment)"
         >
-          <div class="git-rail">
-            <button v-if="segment.days.length === 1" title="在记录列表中编辑" :aria-label="`编辑 ${segment.days[0].dateLabel} 的记录`" @click="openRecord(segment.days[0].captureDate)"><i></i></button>
+          <div class="journey-rail">
+            <button
+              class="journey-node"
+              :title="segment.days.length > 1 ? '编辑旅行起始日' : '在记录列表中编辑'"
+              :aria-label="`编辑 ${segment.dateLabel} 的旅行记录`"
+              @click="openRecord(segment.days[segment.days.length - 1].captureDate)"
+            ><i></i></button>
           </div>
-          <div class="trip-information">
-            <div class="trip-primary">
-              <time>{{ segment.dateLabel }}</time>
-              <strong>{{ segmentCity(segment) }}</strong>
-            </div>
-            <div v-if="segment.days.length === 1" class="trip-line"><MapPin :size="14" />{{ displayPlaces(segment.places) || '—' }}</div>
-          </div>
-          <div v-if="segment.days.length > 1" class="trip-day-galleries">
-            <section v-for="(day, dayIndex) in segment.days" :key="day.captureDate" class="trip-day-gallery">
-              <div class="day-branch">
+          <div class="trip-day-galleries">
+            <section v-for="day in segment.days" :key="day.captureDate" class="trip-day-gallery">
+              <div class="trip-day-label">
                 <button
-                  v-if="dayIndex === segment.days.length - 1"
-                  class="journey-root"
-                  title="编辑旅行起始日"
-                  :aria-label="`编辑旅行起始日 ${day.dateLabel}`"
+                  class="journey-date"
+                  title="在记录列表中编辑"
+                  :aria-label="`编辑 ${day.dateLabel} 的记录`"
                   @click="openRecord(day.captureDate)"
-                ><i></i></button>
-                <button v-if="dayIndex < segment.days.length - 1" class="day-node" title="在记录列表中编辑" :aria-label="`编辑 ${day.dateLabel} 的记录`" @click="openRecord(day.captureDate)"><i></i></button>
+                ><time :datetime="day.date">{{ day.dateLabel }}</time><Pencil :size="11" /></button>
+                <strong class="journey-city">{{ segmentCity(segment) }}</strong>
+                <span v-if="displayPlaces(day.places)" class="journey-places">{{ displayPlaces(day.places) }}</span>
               </div>
-              <div class="trip-day-content">
-                <div class="trip-day-label">
-                  <time>{{ day.dateLabel }}</time>
-                  <span v-if="displayPlaces(day.places)">{{ displayPlaces(day.places) }}</span>
-                </div>
-                <div class="trip-gallery">
-                  <button v-for="photo in day.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
-                    <img :src="photo.thumbnail" :alt="segment.title" loading="lazy" />
-                  </button>
-                </div>
+              <div class="trip-gallery">
+                <button v-for="photo in day.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
+                  <img :src="photo.thumbnail" :alt="segment.title" loading="lazy" />
+                </button>
               </div>
             </section>
-          </div>
-          <div v-else class="trip-gallery">
-            <button v-for="photo in segment.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
-              <img :src="photo.thumbnail" :alt="segment.title" loading="lazy" />
-            </button>
           </div>
         </article>
       </div>
@@ -492,45 +481,83 @@ onBeforeUnmount(() => { previewRequest += 1; closePhoto(); });
 .map-key { position: absolute; left: max(24px, calc((100vw - 1492px) / 2)); bottom: 24px; padding: 8px 10px; display: flex; align-items: center; gap: 7px; color: #52645f; background: #f5f8f5e8; border: 1px solid #c2ceca; border-radius: 5px; font-size: 11px; }.map-key i { width: 10px; height: 10px; background: linear-gradient(135deg, #e05a3f, #16857b, #2f6f9f); border: 2px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #81918c; }.city-tooltip { position: absolute; right: max(72px, calc((100vw - 1390px) / 2)); bottom: 28px; color: #42534e; font-size: 11px; }
 .preview-state { height: 100%; display: grid; place-items: center; color: #50615d; }.preview-state.error { color: #9e4237; }
 .preview-journeys { max-width: 1540px; margin: 0 auto; padding: 30px 24px 70px; scroll-margin-top: 58px; }.journey-heading { min-height: 58px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 1px solid #d5dcda; }.journey-heading h2 { margin: 4px 0 0; font-size: 21px; }.journey-heading button { height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 6px; color: #52625d; background: white; border: 1px solid #c8d1ce; border-radius: 5px; font-size: 11px; }
-.git-timeline { padding-top: 12px; }
-.git-entry { position: relative; display: grid; grid-template-columns: 28px 28px minmax(210px, 260px) minmax(0, 1fr); gap: 18px; min-height: 116px; padding: 20px 0; border-bottom: 1px solid #e0e5e3; }
-.git-entry:last-child { border-bottom: 0; }
-.git-rail { position: relative; grid-column: 1; grid-row: 1; min-height: 76px; }
-.git-rail::before { content: ""; position: absolute; z-index: 0; left: 8px; top: -20px; bottom: -20px; width: 3px; background: var(--city-color); opacity: .55; }
-.git-entry:first-child .git-rail::before { top: 10px; }
-.git-entry:last-child .git-rail::before { bottom: auto; height: 30px; }
-.git-entry:only-child .git-rail::before { display: none; }
-.git-rail > button { position: absolute; z-index: 2; left: 0; top: 2px; width: 20px; height: 20px; padding: 0; background: transparent; border: 0; border-radius: 50%; }
-.git-rail > button i { display: block; width: 17px; height: 17px; margin: 1px; background: var(--city-color); border: 3px solid #f7f8f6; border-radius: 50%; box-shadow: 0 0 0 1px var(--city-color); transition: transform 140ms ease; }
-.git-rail > button:hover i, .git-rail > button:focus-visible i { transform: scale(1.16); }
-.trip-information { z-index: 1; min-width: 0; grid-column: 3; grid-row: 1; display: grid; align-content: start; gap: 9px; }
-.trip-primary { min-width: 0; min-height: 21px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 11px; }
-.trip-primary time { flex: 0 0 auto; color: #74827e; font-size: 11px; }
-.trip-primary strong { min-width: 0; color: #233833; font-size: 16px; overflow-wrap: anywhere; }
-.trip-line { min-width: 0; display: flex; align-items: flex-start; gap: 7px; color: #60706b; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-.trip-line svg { flex: 0 0 auto; margin-top: 1px; color: #87948f; }
-.trip-day-galleries { min-width: 0; grid-column: 2 / 5; grid-row: 1; display: grid; gap: 11px; }
-.trip-day-gallery { min-width: 0; display: grid; grid-template-columns: 28px minmax(210px, 260px) minmax(0, 1fr); gap: 18px; padding-bottom: 11px; border-bottom: 1px solid #e1e6e4; }
-.trip-day-gallery:last-child { padding-bottom: 0; border-bottom: 0; }
-.day-branch { position: relative; min-height: 42px; }
-.day-branch::before { content: ""; position: absolute; left: -18px; top: -12px; bottom: -12px; width: 2px; background: var(--city-color); opacity: .5; }
-.trip-day-gallery:last-child .day-branch::after { content: ""; position: absolute; left: -38px; top: -10px; width: 20px; height: 20px; border-right: 2px solid var(--city-color); border-bottom: 2px solid var(--city-color); border-bottom-right-radius: 20px; opacity: .55; }
-.trip-day-gallery:first-child .day-branch::before { top: 10px; }
-.trip-day-gallery:last-child .day-branch::before { top: -12px; bottom: auto; height: 4px; }
-.day-node { position: absolute; z-index: 2; left: -27px; top: 1px; width: 18px; height: 18px; padding: 0; background: transparent; border: 0; border-radius: 50%; }
-.day-node i { display: block; width: 14px; height: 14px; margin: 2px; background: #f7f8f6; border: 3px solid var(--city-color); border-radius: 50%; transition: background 140ms ease, transform 140ms ease; }
-.day-node:hover i, .day-node:focus-visible i { background: var(--city-color); transform: scale(1.12); }
-.journey-root { position: absolute; z-index: 2; left: -47px; top: 0; width: 20px; height: 20px; padding: 0; background: transparent; border: 0; border-radius: 50%; }
-.journey-root i { display: block; width: 17px; height: 17px; margin: 1px; background: var(--city-color); border: 3px solid #f7f8f6; border-radius: 50%; box-shadow: 0 0 0 1px var(--city-color); transition: transform 140ms ease; }
-.journey-root:hover i, .journey-root:focus-visible i { transform: scale(1.16); }
-.trip-day-content { min-width: 0; grid-column: 3; display: grid; grid-template-columns: minmax(0, 140px) minmax(0, 1fr); gap: 12px; }
-.trip-day-label { width: 100%; max-width: 140px; min-width: 0; display: grid; align-content: start; gap: 4px; color: #5f6f6a; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
-.trip-day-label time { color: #74827e; }
-.trip-day-label span { font-weight: 600; }
+.journey-timeline { --journey-label-width: 160px; padding-top: 12px; }
+.journey-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 20px 0;
+  border-bottom: 1px solid #e0e5e3;
+}
+.journey-entry:last-child { border-bottom: 0; }
+.journey-rail { position: relative; }
+.journey-rail::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: -21px;
+  bottom: -21px;
+  width: 1px;
+  background: #d5dfda;
+}
+.journey-entry:first-child .journey-rail::before { top: 12px; }
+.journey-entry:last-child .journey-rail::before { bottom: auto; height: 33px; }
+.journey-entry:only-child .journey-rail::before { display: none; }
+.journey-node {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+.journey-node i {
+  width: 10px;
+  height: 10px;
+  background: var(--city-color);
+  border: 2px solid #f7f8f6;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--city-color);
+}
+.journey-node:hover i { box-shadow: 0 0 0 2px var(--city-color); }
+.journey-node:focus-visible, .journey-date:focus-visible { outline: 2px solid var(--city-color); outline-offset: 3px; }
+.trip-day-galleries { min-width: 0; display: grid; gap: 16px; }
+.trip-day-gallery {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, var(--journey-label-width)) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.trip-day-label { width: 100%; max-width: var(--journey-label-width); min-width: 0; display: grid; align-content: start; gap: 4px; overflow-wrap: anywhere; }
+.journey-date {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #74827e;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+}
+.journey-date time { min-width: 0; }
+.journey-date svg { flex: 0 0 auto; color: #8a9891; }
+button.journey-date:hover { color: #233833; }
+.journey-city { min-width: 0; color: #233833; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.journey-places { min-width: 0; color: #60706b; font-size: 12px; line-height: 1.55; }
 .trip-gallery { min-width: 0; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px; }
-.git-entry > .trip-gallery { grid-column: 4; grid-row: 1; }
 .trip-gallery button { flex: 0 0 120px; overflow: hidden; padding: 0; background: #dce3e0; border: 0; border-radius: 4px; }
-.trip-gallery img { display: block; width: 120px; aspect-ratio: 4/3; object-fit: cover; transition: transform 160ms ease; }
+.trip-gallery img { display: block; width: 120px; aspect-ratio: 4 / 3; object-fit: cover; transition: transform 160ms ease; }
 .trip-gallery button:hover img { transform: scale(1.035); }
 .preview-empty { min-height: 280px; display: grid; place-content: center; justify-items: center; color: #75827e; }.preview-empty h2 { margin: 10px 0 2px; color: #344640; font-size: 18px; }.preview-empty p { margin: 0; font-size: 12px; }
 .preview-lightbox { position: fixed; inset: 0; z-index: 80; padding: 40px 70px; display: grid; place-items: center; background: #0d1312f2; }.preview-lightbox > img { max-width: min(1180px, 86vw); max-height: 84vh; object-fit: contain; }.close-lightbox, .lightbox-nav { position: absolute; display: grid; place-items: center; color: white; background: #24302dbd; border: 1px solid #ffffff38; border-radius: 50%; }.close-lightbox { right: 22px; top: 20px; width: 42px; height: 42px; }.lightbox-nav { top: 50%; width: 44px; height: 44px; }.lightbox-nav.previous { left: 18px; }.lightbox-nav.next { right: 18px; }

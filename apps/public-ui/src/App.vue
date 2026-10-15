@@ -439,39 +439,22 @@ onBeforeUnmount(() => {
         <div v-if="!loading && !segments.length" class="preview-empty">
           <MapPin :size="32" /><h2>暂无可预览的旅行记录</h2><p>日期需要允许公开并至少选择一张精选照片。</p>
         </div>
-        <div v-else class="git-timeline">
-          <article v-for="segment in segments" :key="segment.id" class="git-entry" :style="timelineStyle(segment)">
-            <div class="git-rail" aria-hidden="true"><i v-if="segment.days.length === 1"></i></div>
-            <div class="trip-information">
-              <div class="trip-primary">
-                <time>{{ segment.dateLabel }}</time>
-                <strong>{{ segmentCity(segment) }}</strong>
-              </div>
-              <div v-if="segment.days.length === 1" class="trip-line"><MapPin :size="14" />{{ displayPlaces(segment.places) || '—' }}</div>
-            </div>
-            <div v-if="segment.days.length > 1" class="trip-day-galleries">
-              <section v-for="(day, dayIndex) in segment.days" :key="day.date" class="trip-day-gallery">
-                <div class="day-branch" aria-hidden="true">
-                  <span v-if="dayIndex === segment.days.length - 1" class="journey-root"><i></i></span>
-                  <span v-if="dayIndex < segment.days.length - 1" class="day-node"><i></i></span>
+        <div v-else class="journey-timeline">
+          <article v-for="segment in segments" :key="segment.id" class="journey-entry" :aria-label="`${segment.dateLabel} ${segmentCity(segment)}`" :style="timelineStyle(segment)">
+            <div class="journey-rail" aria-hidden="true"><span class="journey-node"><i></i></span></div>
+            <div class="trip-day-galleries">
+              <section v-for="day in segment.days" :key="day.date" class="trip-day-gallery">
+                <div class="trip-day-label">
+                  <time class="journey-date" :datetime="day.date">{{ day.dateLabel }}</time>
+                  <strong class="journey-city">{{ segmentCity(segment) }}</strong>
+                  <span v-if="displayPlaces(day.places)" class="journey-places">{{ displayPlaces(day.places) }}</span>
                 </div>
-                <div class="trip-day-content">
-                  <div class="trip-day-label">
-                    <time>{{ day.dateLabel }}</time>
-                    <span v-if="displayPlaces(day.places)">{{ displayPlaces(day.places) }}</span>
-                  </div>
-                  <div class="trip-gallery">
-                    <button v-for="photo in day.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
-                      <img :src="assetUrl(photo.thumbnail)" :alt="segment.title" loading="lazy" />
-                    </button>
-                  </div>
+                <div class="trip-gallery">
+                  <button v-for="photo in day.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
+                    <img :src="assetUrl(photo.thumbnail)" :alt="segment.title" loading="lazy" />
+                  </button>
                 </div>
               </section>
-            </div>
-            <div v-else class="trip-gallery">
-              <button v-for="photo in segment.photos" :key="photo.id" title="查看大图" @click="openPhoto(segment, photo.id)">
-                <img :src="assetUrl(photo.thumbnail)" :alt="segment.title" loading="lazy" />
-              </button>
             </div>
           </article>
         </div>

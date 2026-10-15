@@ -127,7 +127,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .featured-photo-section { margin-bottom: 20px; padding: 12px 14px 15px; background: #fff9e9; border-top: 1px solid #e8d39f; border-bottom: 1px solid #e8d39f; }
 .featured-photo-section .photo-subheading { color: #a16d1e; }
 .featured-photo-section .photo-subheading h3 { color: #805719; }
-.featured-photo-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+.featured-photo-row { display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 5px; }
 .featured-photo-row .photo-card { flex: 0 0 170px; }
 .all-photo-section { min-width: 0; }
 .photo-list-empty { min-height: 94px; display: grid; place-items: center; color: #7b8884; background: #eef2f0; border: 1px dashed #cad3d0; font-size: 12px; }
