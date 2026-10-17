@@ -502,7 +502,7 @@ onMounted(async () => {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><ImageIcon :size="20" /><strong>Moments · 拾光录</strong><span>本地照片标注</span></div>
+      <div class="brand"><ImageIcon :size="20" /><strong>Moments · 拾光集</strong><span>本地照片标注</span></div>
       <nav aria-label="主导航">
         <button :class="{ active: view === 'timeline' }" @click="view = 'timeline'">
           <CalendarDays :size="17" />照片标注

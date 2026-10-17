@@ -60,6 +60,11 @@ def test_display_name_matches_in_all_entry_points():
         "apps/public-ui/src/App.vue",
         "src/pic_timeline/templates/index.html",
     ):
-        assert "Moments · 拾光录" in (ROOT / path).read_text(encoding="utf-8"), path
-    assert "拾光录" in (ROOT / "user_guide.md").read_text(encoding="utf-8")
+        assert "Moments · 拾光集" in (ROOT / path).read_text(encoding="utf-8"), path
+    assert "拾光集" in (ROOT / "user_guide.md").read_text(encoding="utf-8")
+    case_path = "docs/Moments_拾光集_功能案例.pdf"
+    assert case_path in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert case_path in (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert f"!/{case_path}" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert (ROOT / case_path).is_file()
     assert read_json("package.json")["name"] == "moments"

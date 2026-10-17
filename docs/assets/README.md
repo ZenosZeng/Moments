@@ -2,7 +2,7 @@
 
 `readme-cover.png` 使用内置 `image_gen` 重新生成，为 2048 × 768 的不透明 PNG，仅用于开源项目 README。没有输入个人照片、数据库、真实行程或其他项目的图片；风景照片全部为生成示意，不代表用户去过的地方，也不是应用截图。
 
-展示名为“Moments · 拾光录”，副标题为“照片 · 地图 · 时间线”。使用原有合成首图作为编辑输入，由内置 `image_gen` 替换主标题，保留摄影拼贴与轻量时间线；没有使用个人素材。
+展示名为“Moments · 拾光集”，副标题为“照片 · 地图 · 时间线”。使用原有合成首图作为编辑输入，由内置 `image_gen` 替换主标题，保留摄影拼贴与轻量时间线；没有使用个人素材。
 
 底图采用居中项目名、中文副标题、摄影拼贴与轻量时间线。参考 [Immich](https://github.com/immich-app/immich) 和 [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy) README 的品牌与图片展示层次，不复制其图片、Logo 或界面。
 
@@ -31,7 +31,7 @@ Constraints: original generated scenery only; not a real application screenshot.
 Use case: text-localization.
 Asset type: opaque PNG README masthead for the open-source project Moments.
 Input image 1: edit target. This is an existing AI-generated photographic banner with no personal photos or actual travel records.
-Primary request: change ONLY the large main project title to exactly "Moments · 拾光录". Render the three Chinese characters precisely: 拾 光 录, in that order. Use a centered dot between the English and Chinese name. Remove all lettering from the prior Chinese title.
+Primary request: change ONLY the large main project title to exactly "Moments · 拾光集". Render the three Chinese characters precisely: 拾 光 集, in that order. Use a centered dot between the English and Chinese name. Remove all lettering from the prior Chinese title.
 Keep the smaller subtitle verbatim: "照片 · 地图 · 时间线".
 Invariants: preserve the existing photographic prints, their positions, colors and lighting, fine timeline and colored nodes, clean near-white background and subtle paper shadows. Keep the panoramic 2048 by 768 framing and a fully opaque background.
 Typography: centered, bold, refined charcoal sans serif supporting Chinese. The complete bilingual main title must fit on one line within generous margins, with the subtitle below and clear separation from all photographs.

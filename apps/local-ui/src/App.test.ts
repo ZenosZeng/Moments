@@ -47,7 +47,7 @@ describe("annotation task integration", () => {
     try {
       await settle();
       const button = host.querySelectorAll<HTMLButtonElement>(".task-button")[2];
-      expect(host.querySelector(".brand strong")?.textContent).toBe("Moments · 拾光录");
+      expect(host.querySelector(".brand strong")?.textContent).toBe("Moments · 拾光集");
       expect(button.textContent).toContain("导出公开产物");
       expect(host.querySelector(".artifact-links")).toBeNull();
       button.click();

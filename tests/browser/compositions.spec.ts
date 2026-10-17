@@ -11,6 +11,8 @@ test("desktop composition editor renders and persists an end-to-end local workfl
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
+  await expect(page.locator(".brand strong")).toHaveText("Moments · 拾光集");
+  await expect(page).toHaveTitle("Moments · 拾光集 | 本地照片标注");
   await page.getByRole("button", { name: "图文管理", exact: true }).click();
   await expect(page.locator(".composition-photo")).toHaveCount(8);
   await expect(page.getByLabel("图文组标题")).toHaveValue("海边与街巷的两日小记");

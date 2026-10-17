@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/assets/readme-cover.png" alt="Moments · 拾光录：照片、地图与时间线" width="100%">
+  <img src="docs/assets/readme-cover.png" alt="Moments · 拾光集：照片、地图与时间线" width="100%">
 </p>
 
-# Moments · 拾光录
+# Moments · 拾光集
 
 本地整理照片、标注城市与地点、挑选精选，再用地图和时间线回看旅行，也可以制作调色图文组。
 
-[功能案例（PDF）](docs/Moments_拾光录_功能案例.pdf)
+[功能案例（PDF）](docs/Moments_拾光集_功能案例.pdf)
 
 - 按日统计照片，支持多个照片源、增量索引和任务进度。
 - 按日期标注与精选，浏览城市地图、旅行时间线和照片画廊。
