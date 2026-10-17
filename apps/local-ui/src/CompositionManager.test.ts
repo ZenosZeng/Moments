@@ -53,6 +53,15 @@ async function selectDates(host: HTMLElement) {
   await settle();
 }
 
+async function saveNewGroup(host: HTMLElement) {
+  await selectDates(host);
+  host.querySelector<HTMLButtonElement>(".composition-source-photo > button:first-child")!.click();
+  setInput(host, "图文组标题", "异步保存测试");
+  setInput(host, "图文组地点", "街巷");
+  host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await settle();
+}
+
 function dragEvent(type: string, after = false) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: after ? 1 : -1 });
   Object.defineProperty(event, "dataTransfer", { value: { setData: vi.fn(), effectAllowed: "", dropEffect: "" } });
@@ -70,6 +79,56 @@ function dragPhoto(host: HTMLElement, from: string, to: string, after = false) {
 afterEach(() => { vi.mocked(api).mockReset(); vi.restoreAllMocks(); });
 
 describe("composition manager", () => {
+  it.each(["switch", "reload"])("blocks editing during a delayed %s and restores the draft if reading fails", async (action) => {
+    const { host, app } = await mount();
+    try {
+      await saveNewGroup(host);
+      setInput(host, "文案正文", "读取失败也不能丢失的草稿");
+      await settle();
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const originalApi = vi.mocked(api).getMockImplementation()!;
+      let rejectRead!: (reason: Error) => void;
+      const pending = new Promise<never>((_resolve, reject) => { rejectRead = reject; });
+      vi.mocked(api).mockImplementation((path, options) => {
+        if (path === (action === "switch" ? "/api/compositions/group1" : "/api/compositions/sources") && !options) return pending;
+        return originalApi(path, options);
+      });
+      host.querySelector<HTMLButtonElement>(action === "switch" ? ".composition-group" : '[title="重新载入图文组和精选来源"]')!.click();
+      await settle();
+      expect(host.querySelector("form")).toBeNull();
+      expect(host.querySelector<HTMLButtonElement>('[form="composition-form"]')!.disabled).toBe(true);
+      rejectRead(new Error("读取暂时失败"));
+      await settle();
+      expect(host.querySelector<HTMLTextAreaElement>('[aria-label="文案正文"]')!.value).toBe("读取失败也不能丢失的草稿");
+      expect(host.querySelector(".composition-heading i")).not.toBeNull();
+      expect(host.querySelector(".composition-message")!.textContent).toContain("读取暂时失败");
+      expect(host.querySelector<HTMLButtonElement>('[form="composition-form"]')!.disabled).toBe(false);
+    } finally { app.unmount(); host.remove(); }
+  });
+
+  it("adopts successful save responses without another group read or a duplicate POST", async () => {
+    const { host, app } = await mount();
+    try {
+      const originalApi = vi.mocked(api).getMockImplementation()!;
+      vi.mocked(api).mockImplementation((path, options) => {
+        if (path === "/api/compositions/group1" && !options) throw new Error("保存后的读取不可用");
+        return originalApi(path, options);
+      });
+      await saveNewGroup(host);
+      expect(host.querySelector(".composition-directory code")!.textContent).toBe("/workspace/data/compositions/group1");
+      expect(host.querySelector(".composition-heading i")).toBeNull();
+      setInput(host, "文案正文", "第二次保存应更新同一组");
+      host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await settle();
+      const writes = vi.mocked(api).mock.calls.filter(([_path, options]) => ["POST", "PUT"].includes(options?.method || ""));
+      expect(writes.map(([path, options]) => [path, options?.method])).toEqual([
+        ["/api/compositions", "POST"], ["/api/compositions/group1", "PUT"]
+      ]);
+      expect(vi.mocked(api).mock.calls.some(([path, options]) => path === "/api/compositions/group1" && !options)).toBe(false);
+      expect(host.querySelector(".composition-message")!.textContent).toContain("图文组已保存");
+    } finally { app.unmount(); host.remove(); }
+  });
+
   it("edits the displayed group photo in the lightbox, retains per-photo drafts, and persists them", async () => {
     const { host, app } = await mount();
     try {

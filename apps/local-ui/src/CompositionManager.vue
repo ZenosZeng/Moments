@@ -144,32 +144,38 @@ function changeCityMode(event: Event) {
   autoCities.value = enabled;
 }
 
+function applyGroup(loaded: CompositionGroup | null) {
+  current.value = loaded;
+  clearPhotoDrag();
+  title.value = loaded?.title || "";
+  location.value = loaded?.location || "";
+  captionTitle.value = loaded?.captionTitle || "";
+  caption.value = loaded?.caption || "";
+  selectedDates.value = [...(loaded?.sourceDates || [])];
+  autoTime.value = loaded?.autoFill?.time ?? true;
+  autoCities.value = loaded?.autoFill?.cities ?? true;
+  manualStart.value = loaded?.time.start || "";
+  manualEnd.value = loaded?.time.end || "";
+  manualCities.value = loaded?.cities.join("，") || "";
+  photos.value = loaded?.photos.map(editPhoto) || [];
+  activeId.value = photos.value[0]?.id || "";
+  baseline.value = JSON.stringify(payload());
+  agent.value = null;
+  previewIndex.value = null;
+}
+
 async function openGroup(group: CompositionGroup | null, force = false) {
-  if (!force && !canLeave()) return;
+  if (!force && (loading.value || saving.value || !canLeave())) return;
   const version = ++requestId;
+  loading.value = true;
   clearMessages();
   try {
     const loaded = group ? await api<CompositionGroup>(`/api/compositions/${group.id}`) : null;
     if (version !== requestId) return;
-    current.value = loaded;
-    clearPhotoDrag();
-    title.value = loaded?.title || "";
-    location.value = loaded?.location || "";
-    captionTitle.value = loaded?.captionTitle || "";
-    caption.value = loaded?.caption || "";
-    selectedDates.value = [...(loaded?.sourceDates || [])];
-    autoTime.value = loaded?.autoFill?.time ?? true;
-    autoCities.value = loaded?.autoFill?.cities ?? true;
-    manualStart.value = loaded?.time.start || "";
-    manualEnd.value = loaded?.time.end || "";
-    manualCities.value = loaded?.cities.join("，") || "";
-    photos.value = loaded?.photos.map(editPhoto) || [];
-    activeId.value = photos.value[0]?.id || "";
-    baseline.value = JSON.stringify(payload());
-    agent.value = null;
-    previewIndex.value = null;
+    applyGroup(loaded);
     await Promise.all(selectedDates.value.map(day => fetchDay(day, true)));
-  } catch (reason) { problem.value = (reason as Error).message; }
+  } catch (reason) { if (version === requestId) problem.value = (reason as Error).message; }
+  finally { if (version === requestId) loading.value = false; }
 }
 
 function togglePhoto(photo: CompositionPhoto) {
@@ -242,6 +248,7 @@ function addLocation(value: string) {
 }
 
 async function save(): Promise<CompositionGroup | null> {
+  if (loading.value || saving.value) return null;
   clearMessages();
   if (!title.value.trim() || !location.value.trim()) { problem.value = "标题和地点必填"; return null; }
   if (!selectedDates.value.length || !photos.value.length) { problem.value = "至少选择一个日期和一张精选照片"; return null; }
@@ -251,9 +258,10 @@ async function save(): Promise<CompositionGroup | null> {
       method: current.value ? "PUT" : "POST", body: JSON.stringify(payload())
     });
     const focused = activeId.value;
-    await openGroup(saved, true);
+    applyGroup(saved);
     activeId.value = focused;
     groups.value = [saved, ...groups.value.filter(item => item.id !== saved.id)];
+    await Promise.all(selectedDates.value.map(day => fetchDay(day, true)));
     notice.value = "图文组已保存";
     return saved;
   } catch (reason) { problem.value = (reason as Error).message; return null; }
@@ -261,10 +269,12 @@ async function save(): Promise<CompositionGroup | null> {
 }
 
 async function reload() {
-  if (!canLeave()) return;
-  sourcePhotos.value = {};
-  try { await refreshCatalog(); await openGroup(current.value, true); }
+  if (loading.value || saving.value || !canLeave()) return;
+  loading.value = true;
+  clearMessages();
+  try { await refreshCatalog(); sourcePhotos.value = {}; await openGroup(current.value, true); }
   catch (reason) { problem.value = (reason as Error).message; }
+  finally { loading.value = false; }
 }
 
 async function prepareAgent() {
