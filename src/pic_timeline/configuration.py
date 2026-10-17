@@ -59,6 +59,7 @@ class LocalConfig:
     thumbnails: Path
     exports: Path
     base_path: str
+    compositions: Path
 
     def resolve_sources(self) -> list[PhotoSource]:
         sources = [source.resolve() for source in self.sources]
@@ -150,14 +151,20 @@ def load_config(root: Path) -> LocalConfig:
     port = app.get("port", 8765)
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("app.port 必须是 1 到 65535 的整数")
-    storage = _keys(raw.get("storage", {}), {"index", "annotations", "thumbnails", "exports"}, "storage")
+    storage = _keys(raw.get("storage", {}), {"index", "annotations", "thumbnails", "exports", "compositions"}, "storage")
     index = _path(root, storage.get("index", "data/db/photo_index.sqlite3"), "storage.index")
     annotations = _path(root, storage.get("annotations", "data/db/annotations.sqlite3"), "storage.annotations")
     thumbnails = _path(root, storage.get("thumbnails", "data/cache/thumbnails"), "storage.thumbnails")
     exports = _path(root, storage.get("exports", "data/exports"), "storage.exports")
     validate_storage(root, index, annotations, thumbnails, exports)
+    compositions = _path(root, storage.get("compositions", "data/compositions"), "storage.compositions")
+    data = root / "data"
+    if not compositions.is_relative_to(data) or compositions == data or compositions.is_relative_to(data / "backups"):
+        raise ValueError("图文组必须保存在 data/ 内独立的私密目录")
+    if any(compositions.is_relative_to(path) or path.is_relative_to(compositions) for path in (index, annotations, thumbnails, exports)):
+        raise ValueError("图文组目录不能与数据库、缓存或公开导出重叠")
     publish = _keys(raw.get("publish", {}), {"base_path"}, "publish")
     base = _text(publish.get("base_path", "/Moments/"), "publish.base_path")
     if not re.fullmatch(r"/(?:[A-Za-z0-9_-]+/)*", base):
         raise ValueError("publish.base_path 必须是 / 或 /仓库名/ 形式，不允许 URL、查询参数或路径穿越")
-    return LocalConfig(root, tuple(sources), host, port, index, annotations, thumbnails, exports, base)
+    return LocalConfig(root, tuple(sources), host, port, index, annotations, thumbnails, exports, base, compositions)

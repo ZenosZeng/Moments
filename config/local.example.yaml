@@ -21,6 +21,7 @@ storage:
   annotations: "data/db/annotations.sqlite3"
   thumbnails: "data/cache/thumbnails"
   exports: "data/exports"
+  compositions: "data/compositions"
 
 publish:
   base_path: "/Moments/"

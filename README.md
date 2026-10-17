@@ -6,12 +6,15 @@
 
 方舟旅迹（Moments）是一套本地照片标注与旅行足迹展示工具。按每天的照片数量回看生活，记录城市和地点，挑选照片，再生成独立的旅行地图与时间线网站。
 
+当前版本：**0.2.0**。更新内容见 [更新日志](CHANGELOG.md)。
+
 ## 功能
 
 - 每月每日照片数量图表，只统计具有拍摄日期的照片，不使用文件时间补齐。
 - 照片标注、记录列表和旅行预览；支持默认城市及精选照片。
 - 索引与旅行预览增量缓存，三个后台任务显示进度、缓存命中和待更新数量。
 - 城市级世界地图、年份和城市筛选、旅行时间线与照片画廊。
+- 本地图文组：多日期精选选图、独立排序、地点参考、大图、预设调色和可选文案；可准备 Agent 文案任务。
 - 增量导出 WebP 和缩略图，纠正方向，删除 EXIF/GPS 及私密字段。
 - Python + SQLite 本地服务，Vue + TypeScript + Vite 前端；地图无需 API Key。
 
@@ -55,13 +58,14 @@ App 只生成公开数据包，网站由 GitHub Actions 构建，不需要在本
 
 ```text
 src/pic_timeline/       照片分析、本地服务、数据库与脱敏导出
-apps/local-ui/         标注、记录列表、旅行预览
+apps/local-ui/         标注、记录列表、旅行预览和图文管理
 apps/public-ui/        完整静态网站源码、城市定位及审计
 tests/                 本地工具测试
 scripts/               本地任务入口与数据迁移脚本
 config/                公开示例配置；local.yaml 私密且忽略
 data/db/               标注与多源照片索引，Git 忽略
 data/cache/            本地缩略图，Git 忽略
+data/compositions/     图文组清单、调色派生图和文案，Git 忽略
 data/exports/          公开数据包与增量图片缓存，Git 忽略
 data/backups/          本地数据库快照，Git 忽略
 _archive/              旧仓库私密 ZIP 归档，Git 忽略
@@ -91,11 +95,13 @@ _archive/              旧仓库私密 ZIP 归档，Git 忽略
 
 GitHub Release 附件可以保存公开数据包而不进入 Git 历史，但 public 仓库的附件仍公开可下载。发布数据 Release 就已公开照片附件，不必等到 Pages 部署完成。上传数据、部署 Pages 都需要单独决定，App 内导出不执行这些操作。
 
-详见 [使用指南](user_guide.md)、[发布说明](docs/publishing.md) 和 [迁移说明](docs/migration.md)。
+详见 [使用指南](user_guide.md)、[图文组说明](docs/compositions.md)、[发布说明](docs/publishing.md) 和 [迁移说明](docs/migration.md)。
 
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request。修改后运行 `pixi run test`；不要提交个人数据库、照片、配置或真实旅行数据。提交采用 Conventional Commits，例如 `feat: 增加照片筛选`。
+
+应用版本统一维护在 `pixi.toml`、根目录及两个前端的 `package.json`，对应 npm 锁文件同步更新，并记录到 `CHANGELOG.md`。应用版本与公开数据格式、图文清单格式的版本分别管理。
 
 ## 许可
 

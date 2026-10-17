@@ -1,0 +1,134 @@
+.composition-workspace { max-width: 1700px; margin: 0 auto; padding: 0 24px 48px; }
+.composition-heading { min-height: 86px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #d8dfdc; }
+.composition-heading h1 { margin: 0; display: flex; gap: 9px; align-items: center; font-size: 21px; }
+.composition-heading h1 > span, .composition-workspace h2 > span { color: #7b8580; font-size: 12px; font-weight: 400; }
+.composition-heading p { margin: 6px 0 0; color: #6a7872; font-size: 12px; }
+.composition-heading i { margin-left: 10px; font-size: 11px; font-style: normal; color: #a36b24; }
+.composition-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.composition-directory { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #d8dfdc; color: #738178; font-size: 11px; }
+.composition-directory > svg, .composition-directory > span, .composition-directory button { flex-shrink: 0; }
+.composition-directory code { min-width: 0; overflow-wrap: anywhere; line-height: 1.6; color: #4c6556; user-select: text; }
+.composition-directory .unsaved { color: #9b8157; }
+.composition-command { min-height: 34px; padding: 0 11px; display: inline-flex; justify-content: center; align-items: center; gap: 6px; border: 1px solid #cbd4ce; border-radius: 5px; background: #fff; color: #35473f; font-size: 12px; }
+.composition-command.primary { color: white; background: #256d57; border-color: #256d57; }
+.composition-command.danger { color: #a54237; border-color: #e2bcb5; }
+.composition-workspace button:disabled { cursor: default; opacity: .45; }
+.composition-workspace button:focus-visible, .composition-modal button:focus-visible { outline: 2px solid #387e65; outline-offset: 2px; }
+.composition-columns { display: grid; grid-template-columns: 224px minmax(0, 1fr); }
+.composition-sidebar { min-width: 0; border-right: 1px solid #d8dfdc; padding: 20px 18px 0 0; }
+.composition-workspace h2 { margin: 0; display: flex; align-items: center; gap: 7px; color: #3c4d44; font-size: 13px; font-weight: 600; }
+.composition-workspace h2 > span { margin-left: auto; font-size: 11px; }
+.composition-group-list { max-height: 306px; overflow-y: auto; margin: 12px -5px 22px; }
+.composition-group { width: 100%; display: flex; gap: 10px; padding: 8px 5px; border: 0; border-left: 2px solid transparent; background: transparent; text-align: left; border-radius: 3px; }
+.composition-group.active { background: #e5eee8; border-left-color: #2c785c; }
+.composition-group img { width: 48px; height: 56px; border-radius: 3px; object-fit: cover; flex-shrink: 0; }
+.composition-group > span { min-width: 0; display: grid; gap: 4px; align-content: center; }
+.composition-group strong { font-size: 12px; color: #2e4436; font-weight: 600; overflow-wrap: anywhere; }
+.composition-group small { color: #718075; font-size: 10px; overflow-wrap: anywhere; }
+.composition-date-picker { border-top: 1px solid #d8dfdc; padding-top: 20px; }
+.composition-search { display: flex; align-items: center; gap: 5px; margin: 12px 0; height: 33px; padding: 0 8px; border: 1px solid #cdd6d0; border-radius: 4px; background: white; color: #849087; }
+.composition-search input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-size: 11px; }
+.composition-date-list { max-height: 580px; overflow-y: auto; }
+.composition-date-list > label { display: flex; align-items: center; gap: 8px; padding: 9px 4px; border-bottom: 1px solid #e4e9e5; cursor: pointer; }
+.composition-date-list > label.checked { background: #eaf0ec; }
+.composition-date-list input { accent-color: #2c785c; width: 14px; height: 14px; }
+.composition-date-list span { min-width: 0; display: grid; gap: 4px; }
+.composition-date-list strong { font-weight: 500; font-size: 12px; }
+.composition-date-list small { color: #79867d; font-size: 10px; overflow-wrap: anywhere; }
+.composition-date-list > label > small { margin-left: auto; flex-shrink: 0; }
+.composition-main { min-width: 0; padding: 20px 0 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) 402px; column-gap: 24px; align-content: start; }
+.composition-metadata { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.1fr) minmax(268px, 1.35fr) minmax(120px, .8fr); gap: 14px; border-bottom: 1px solid #d8dfdc; padding-bottom: 20px; }
+.composition-metadata > label, .composition-copy label { display: block; min-width: 0; font-size: 11px; color: #687a6d; }
+.composition-metadata b { color: #b06a4b; font-weight: 400; }
+.composition-workspace input:not([type='checkbox']):not([type='range']):not([type='search']), .composition-workspace textarea, .composition-modal textarea { width: 100%; margin-top: 7px; padding: 9px 10px; border: 1px solid #cbd5ce; border-radius: 4px; color: #273d30; background: #fff; font-size: 12px; line-height: 1.6; }
+.composition-workspace input:focus, .composition-workspace textarea:focus { outline: 2px solid #c2d6ca; border-color: #52876b; }
+.composition-info-field { min-width: 0; font-size: 11px; color: #687a6d; }
+.composition-date-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 5px; align-items: center; }
+.composition-date-inputs input { min-width: 0; padding-inline: 5px !important; }
+.composition-info-field input:disabled { color: #53675b; background: #edf1ee !important; opacity: 1; }
+.composition-auto { display: flex; align-items: center; gap: 5px; width: fit-content; margin-top: 7px; color: #75887a; font-size: 10px; cursor: pointer; }
+.composition-auto input { margin: 0; width: 12px; height: 12px; accent-color: #38795c; }
+.composition-location-hints { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: #78907f; }
+.composition-location-hints button { max-width: 100%; padding: 5px 9px; color: #587260; border: 1px solid #cdd8d0; border-radius: 4px; background: #f8faf8; font-size: 11px; overflow-wrap: anywhere; text-align: left; }
+.composition-location-hints button:hover, .composition-location-hints button.selected { color: #286447; border-color: #76a187; background: #e6efe8; }
+.composition-editing { display: contents; }
+.composition-selection { grid-column: 1; min-width: 0; padding: 20px 0; }
+.composition-selection > header { height: 24px; margin-bottom: 12px; }
+.composition-selected-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 14px; align-content: start; }
+.composition-photo { position: relative; min-width: 0; overflow: hidden; border: 1px solid #d8dfd9; border-radius: 5px; background: #fff; }
+.composition-photo.active { border-color: #367c5d; box-shadow: 0 0 0 1px #367c5d; }
+.composition-photo.dragging { opacity: .45; }
+.composition-photo.drop-before::after, .composition-photo.drop-after::after { content: ''; position: absolute; top: 0; bottom: 0; width: 4px; background: #29765a; pointer-events: none; z-index: 2; }
+.composition-photo.drop-before::after { left: 0; }
+.composition-photo.drop-after::after { right: 0; }
+.composition-photo-media { position: relative; }
+.composition-photo-select { position: relative; width: 100%; aspect-ratio: 4 / 3; display: block; padding: 0; background: #e6ebe7; border: 0; cursor: pointer; }
+.composition-photo-select[draggable='true'], .composition-photo-tools .composition-drag-handle { cursor: grab; }
+.composition-photo-select:active[draggable='true'], .composition-photo-tools .composition-drag-handle:active { cursor: grabbing; }
+.composition-photo-select img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; }
+.composition-photo-select > span { position: absolute; top: 7px; left: 7px; min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 5px; color: white; background: #1b2d25c9; border-radius: 3px; font-size: 11px; }
+.composition-photo-select > svg { position: absolute; right: 7px; top: 7px; padding: 3px; width: 22px; height: 22px; color: white; background: #29765a; border-radius: 3px; }
+.composition-photo-zoom { position: absolute; right: 7px; bottom: 7px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: white; background: #1d3628c2; border: 0; border-radius: 3px; }
+.composition-photo-tools { display: flex; align-items: center; padding: 5px 3px; gap: 1px; }
+.composition-photo-tools button, .composition-filter header button { width: 25px; height: 27px; display: inline-grid; place-items: center; padding: 0; background: transparent; border: 0; color: #64796b; flex-shrink: 0; border-radius: 3px; }
+.composition-photo-tools button:hover, .composition-filter header button:hover { background: #e9f0eb; }
+.composition-photo-tools span { min-width: 0; flex: 1; font-size: 9px; color: #8a958c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composition-photo-strength { display: grid; grid-template-columns: 1fr auto; gap: 5px; padding: 6px 9px 9px; border-top: 1px solid #e7ece8; font-size: 10px; color: #6f8274; }
+.composition-photo-strength input { grid-column: 1 / -1; width: 100%; min-width: 0; margin: 0; accent-color: #377a59; }
+.composition-inspector { grid-column: 2; grid-row: 2 / span 2; min-width: 0; border-left: 1px solid #d8dfdc; padding: 20px 0 20px 20px; }
+.composition-filter header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.composition-filter h2 { flex: 1; }
+.composition-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; align-content: start; padding: 2px; }
+.composition-presets button { min-width: 0; padding: 0 0 5px; border: 1px solid transparent; border-radius: 4px; background: transparent; overflow: hidden; }
+.composition-presets button.active { border-color: #337959; background: #e6eee8; }
+.composition-presets img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.composition-presets span { display: block; margin-top: 6px; font-size: 11px; color: #6a7a6d; }
+.composition-copy { border-top: 1px solid #d8dfdc; margin-top: 22px; padding-top: 20px; }
+.composition-copy label { margin-top: 14px; }
+.composition-copy textarea { resize: vertical; min-height: 154px; }
+.composition-lightbox-editor { color: #d3dfd7; }
+.composition-lightbox-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 18px; }
+.composition-lightbox-editor h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 14px; font-weight: 500; }
+.composition-lightbox-editor header > span { color: #9eafa4; font-size: 11px; }
+.composition-lightbox-editor .composition-presets span { color: #b8c8bd; }
+.composition-lightbox-editor .composition-presets button.active { border-color: #8ebfa1; background: #30493b; }
+.composition-lightbox-editor button:disabled { opacity: .45; cursor: default; }
+.composition-lightbox-editor button:focus-visible { outline: 2px solid #b3d7c0; outline-offset: 2px; }
+.composition-lightbox-strength { display: grid; grid-template-columns: 1fr auto; gap: 15px; margin-top: 26px; padding-top: 22px; border-top: 1px solid #3b4a42; font-size: 12px; }
+.composition-lightbox-strength output { color: #a5c8b1; }
+.composition-lightbox-strength input { grid-column: 1 / -1; width: 100%; min-width: 0; margin: 0; accent-color: #8ebfa1; }
+.composition-sources { grid-column: 1; border-top: 1px solid #d8dfdc; padding-top: 20px; }
+.composition-sources > header { margin-bottom: 20px; }
+.composition-source-day { margin-bottom: 24px; }
+.composition-source-day > header { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin-bottom: 12px; font-size: 12px; color: #617765; }
+.composition-source-day > header strong { font-weight: 500; color: #3e5546; }
+.composition-source-day > header small { font-size: 11px; color: #87948a; }
+.composition-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
+.composition-source-photo { min-width: 0; position: relative; border: 2px solid transparent; border-radius: 4px; overflow: hidden; }
+.composition-source-photo.chosen { border-color: #357d58; }
+.composition-source-photo > button:first-child { display: block; width: 100%; aspect-ratio: 4 / 3; border: 0; padding: 0; background: #e3eae4; }
+.composition-source-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.composition-source-photo > button > span { position: absolute; left: 5px; top: 5px; width: 22px; height: 22px; display: grid; place-items: center; color: white; background: #317853; border-radius: 3px; }
+.composition-source-zoom { position: absolute; bottom: 5px; right: 5px; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 3px; color: white; background: #1d3628a8; }
+.composition-empty { color: #8b978d; font-size: 12px; padding: 15px 0; }
+.composition-empty-selection { min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #9eaaa1; }
+.composition-empty-selection p { font-size: 12px; }
+.composition-message { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; color: #35674b; background: #e6f0e8; border-bottom: 1px solid #c7d9cb; font-size: 12px; }
+.composition-message.failure { color: #984a3e; background: #fff0ec; border-color: #e8c6bd; }
+.composition-message button { border: 0; background: transparent; color: inherit; display: grid; }
+.composition-loading { min-height: 320px; display: grid; place-items: center; color: #5c7d67; }
+.composition-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 30px; background: #14271dc7; }
+.composition-modal > section { width: 580px; max-width: 100%; padding: 24px; border-radius: 6px; background: #f7f9f7; box-shadow: 0 12px 50px #0003; }
+.composition-modal header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.composition-modal h2 { font-size: 17px; margin: 0; }
+.composition-modal code { display: block; margin: 20px 0 10px; font-size: 11px; overflow-wrap: anywhere; color: #54715c; }
+.composition-modal textarea { resize: none; }
+.composition-modal footer { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+@media (max-width: 1260px) {
+  .composition-columns { grid-template-columns: 192px minmax(0, 1fr); }
+  .composition-sidebar { padding-right: 12px; }
+  .composition-main { padding-left: 18px; }
+  .composition-main { grid-template-columns: minmax(0, 1fr) 345px; column-gap: 16px; }
+  .composition-inspector { padding-left: 16px; }
+  .composition-selected-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+}
