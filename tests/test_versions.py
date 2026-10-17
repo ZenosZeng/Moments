@@ -31,5 +31,19 @@ def test_lockfile_versions_match_package_manifests():
 
 def test_current_version_is_documented():
     version = app_version()
-    assert f"**{version}**" in (ROOT / "README.md").read_text(encoding="utf-8")
-    assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    feature = ".".join(version.split(".")[:2]) + ".0"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    history = (ROOT / "docs/changelog.md").read_text(encoding="utf-8")
+    assert f"最新版本：**v{version}**" in readme
+    assert f"当前功能版本：**v{feature}**" in readme
+    assert f"**v{feature} 主要功能**" in readme
+    assert f"## v{version} · " in history
+    assert f"## v{feature} · " in history
+    assert "docs/changelog.md" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+def test_pr_workflow_is_documented_for_agents_and_contributors():
+    for path in ("AGENTS.md", "CLAUDE.md", "docs/development.md", ".github/PULL_REQUEST_TEMPLATE.md"):
+        text = (ROOT / path).read_text(encoding="utf-8")
+        assert "main" in text, path
+        assert "PR" in text, path

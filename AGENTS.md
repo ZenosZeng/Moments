@@ -24,5 +24,8 @@
 - Pages 仅 workflow_dispatch 手动选择明确的 data-* 版本；禁止 push/release 自动发布，只上传经过审计的静态前端 artifact。
 - 远端修改、发布或公开个人数据须有用户针对该操作的明确授权。
 - 保留已有改动；提交采用中文 Conventional Commits。共享行为、数据库与导出边界改动应加针对性测试。
+- `main` 是生产分支；编辑前检查分支，若在 `main` 必须先创建 `feat/`、`fix/`、`docs/`、`chore/` 或 `release/` 分支。禁止直接向 `main` 提交、推送或强推，所有变更及版本更新通过 PR 合入。
+- 应用版本同步 `pixi.toml`、根和两个前端的 `package.json` 与 npm 锁文件。README分别标明“最新版本”和“当前功能版本”；patch修复不替换当前major/minor的feature摘要，完整记录在 `docs/changelog.md`。文档或流程调整本身不强制升版本。
+- 遵守 `docs/development.md`；版本标签和软件Release只能指向已合入并验收的 `main` 提交，需另行授权。创建分支、更新文档不代表授权推送、建PR、合并或发布。
 - 用户要求不自动运行程序或测试时，提供运行指令，不启动服务。
 - 在 D:\Code 工作时遵守上级 AGENTS.md 的本地 memory 约定，绝不上传 .agents。
