@@ -11,9 +11,10 @@ import sqlite3
 import threading
 import tempfile
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from flask import (
     Flask,
@@ -33,6 +34,7 @@ from .local_cache import JsonCache, fingerprint, jpeg_cache_path, nonempty_file,
 from .release_data import ARTIFACTS, EXPORT_PHASES, release_data
 from .city_country import country_from_code, infer_city
 from .configuration import load_config
+from .compositions import register_compositions
 from .photo_sources import PhotoSource, bind_index_sources, resolve_photo_path, source_bindings
 from .public_package import PRIVATE_IDENTITY_FIELDS
 
@@ -155,14 +157,18 @@ class PhotoIndex:
     def __init__(self, path: Path):
         self.path = path.resolve()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         if not self.path.is_file():
             raise FileNotFoundError(f"照片索引不存在：{self.path}")
         connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            yield connection
+        finally:
+            connection.close()
 
     def metadata(self) -> dict[str, str]:
         with self._connect() as connection:
@@ -328,13 +334,18 @@ class AnnotationStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -864,6 +875,7 @@ def create_app(
     source_finder: Callable[[], Path] = find_source_root,
     sources: list[PhotoSource] | None = None,
     export_root: Path | str | None = None,
+    composition_root: Path | str | None = None,
 ) -> Flask:
     app = Flask(__name__)
     photo_index = PhotoIndex(Path(index_path))
@@ -1597,6 +1609,9 @@ def create_app(
     def refresh_status():
         return jsonify(refresh_service.status())
 
+    register_compositions(app, annotations, photo_index, cache_photo,
+                          Path(composition_root) if composition_root is not None else
+                          (annotations.path.parent.parent if annotations.path.parent.name == "db" else annotations.path.parent) / "compositions")
     app.extensions["photo_index"] = photo_index
     app.extensions["annotation_store"] = annotations
     app.extensions["refresh_service"] = refresh_service
@@ -1633,6 +1648,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     sources = None
+    composition_root = None
     if args.config is not None:
         config_path = args.config.resolve()
         if config_path.name != "local.yaml" or config_path.parent.name != "config":
@@ -1642,6 +1658,7 @@ def main(argv: list[str] | None = None) -> int:
         args.host, args.port = config.host, config.port
         args.index, args.annotations, args.thumbnails = config.index, config.annotations, config.thumbnails
         args.exports = config.exports
+        composition_root = config.compositions
     if _port_is_in_use(args.host, args.port):
         parser.error(
             f"端口 {args.port} 已被占用；请先关闭旧服务，"
@@ -1657,6 +1674,7 @@ def main(argv: list[str] | None = None) -> int:
         source_finder=source_finder,
         sources=sources,
         export_root=args.exports,
+        composition_root=composition_root,
     )
     app.run(host=args.host, port=args.port, debug=False, use_reloader=False, threaded=True)
     return 0

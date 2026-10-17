@@ -1,4 +1,4 @@
-# Moments · 方舟旅迹 静态前端
+# Moments · 拾光集 静态前端
 
 此目录包含完整的网站源码、离线城市定位和产物审计，属于 Moments 主仓库，不需要单独的前端仓库。不包含照片标注服务；个人 JSON 与 WebP 放在被忽略的 public/data/ 和 public/media/。
 

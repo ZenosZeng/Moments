@@ -113,6 +113,18 @@ def test_missing_private_config_has_one_time_setup_instructions(tmp_path):
         load_config(tmp_path)
 
 
+@pytest.mark.parametrize("path", ["../compositions", "data", "data/exports/drafts", "data/cache/thumbnails/drafts", "data/backups/drafts", "data/db"])
+def test_composition_storage_is_private_and_separate(tmp_path, path):
+    with pytest.raises(ValueError):
+        _config(tmp_path / "Moments", {"photos": {"sources": [{"id": "archive", "path": "../photos"}]}, "storage": {"compositions": path}})
+
+
+def test_composition_storage_default_needs_no_config_migration(tmp_path):
+    root = tmp_path / "Moments"
+    config = _config(root, {"photos": {"sources": [{"id": "archive", "path": "../photos"}]}})
+    assert config.compositions == root / "data/compositions"
+
+
 @pytest.mark.parametrize("content", [
     "",
     "[]",

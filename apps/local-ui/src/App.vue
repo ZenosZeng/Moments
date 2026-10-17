@@ -8,6 +8,7 @@ import {
   CircleAlert,
   Database,
   FileArchive,
+  PanelsTopLeft,
   Hash,
   Globe2,
   Image as ImageIcon,
@@ -25,6 +26,7 @@ import { api, ApiError } from "./api";
 import TrailsPreview from "./TrailsPreview.vue";
 import TaskControl from "./TaskControl.vue";
 import PhotoLightbox from "./PhotoLightbox.vue";
+import CompositionManager from "./CompositionManager.vue";
 import { useLocalTask } from "./useLocalTask";
 import { trailCityColor } from "./trails";
 import type {
@@ -79,7 +81,7 @@ const detail = ref<DayDetail | null>(null);
 const form = ref<Annotation | null>(null);
 const footprints = ref<Footprint[]>([]);
 const studioSettings = ref<StudioSettings>({ defaultCity: "", availableCities: [] });
-const view = ref<"timeline" | "places" | "trails" | "settings">("timeline");
+const view = ref<"timeline" | "places" | "trails" | "compositions" | "settings">("timeline");
 const trailsRevision = ref(0);
 const selectedDate = ref("");
 const busy = ref(false);
@@ -500,7 +502,7 @@ onMounted(async () => {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><ImageIcon :size="20" /><strong>Moments · 方舟旅迹</strong><span>本地照片标注</span></div>
+      <div class="brand"><ImageIcon :size="20" /><strong>Moments · 拾光集</strong><span>本地照片标注</span></div>
       <nav aria-label="主导航">
         <button :class="{ active: view === 'timeline' }" @click="view = 'timeline'">
           <CalendarDays :size="17" />照片标注
@@ -513,6 +515,9 @@ onMounted(async () => {
         </button>
         <button :class="{ active: view === 'settings' }" @click="showSettings">
           <SettingsIcon :size="17" />设置
+        </button>
+        <button :class="{ active: view === 'compositions' }" @click="view = 'compositions'">
+          <PanelsTopLeft :size="17" />图文管理
         </button>
       </nav>
       <div class="top-actions">
@@ -701,7 +706,8 @@ onMounted(async () => {
       </section>
     </main>
 
-    <TrailsPreview v-else :revision="trailsRevision" :ready="previewStatus.ready" :generating="previewStatus.state === 'running' || previewTask.pending.value" @open-record="showPlaces" />
+    <TrailsPreview v-else-if="view === 'trails'" :revision="trailsRevision" :ready="previewStatus.ready" :generating="previewStatus.state === 'running' || previewTask.pending.value" @open-record="showPlaces" />
+    <KeepAlive><CompositionManager v-if="view === 'compositions'" /></KeepAlive>
     <PhotoLightbox v-if="lightboxIndex !== null && detail" v-model:index="lightboxIndex" :photos="detail.photos" :date="detail.date" @close="lightboxIndex = null" />
 
     <div v-if="countryDialogCity" class="country-dialog-backdrop" @click.self="closeCountryDialog" @keydown.esc="closeCountryDialog">

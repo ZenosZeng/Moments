@@ -1,11 +1,12 @@
-# Moments · 方舟旅迹 开发约定
+# Moments · 拾光集 开发约定
 
 本仓库是 public 通用源码仓库，包含完整本地工具及静态前端。个人数据库、原图、路径配置、缓存、真实导出和构建产物不得进入 Git，也不得复制旧私有仓库的 Git 历史。
 
 - 环境统一由 Pixi 管理，仅保留 app、test、release 三个任务。
-- 中文展示名为“方舟旅迹”，完整品牌为“Moments · 方舟旅迹”；英文仓库名保持 `Moments`，包名、配置键及 Pages 路径保持原值，不因展示名改动。
+- 中文展示名为“拾光集”，完整品牌为“Moments · 拾光集”；英文仓库名保持 `Moments`，包名、配置键及 Pages 路径保持原值，不因展示名改动。
 - Python/SQLite 负责本地分析与标注；Vue/TypeScript/Vite 负责两个前端。
 - 原图只读，不重命名、移动、删除或修改元数据；没有拍摄日期的照片不参与统计，不使用文件时间 fallback。
+- `docs/Moments_拾光集_功能案例.pdf` 是用户明确确认可公开的案例文档，可随源码跟踪；此授权不延伸到原图、数据库、导出包或其他个人资料。
 - 日常 app/release 参数统一从被忽略的 `config/local.yaml` 读取；使用安全 YAML 解析，拒绝重复键和未知配置，示例配置不得含个人路径。
 - 支持多个仓库外只读照片源，每个源有固定 ID；不同源同名文件不能覆盖，配置顺序和目录后缀变化不得改变照片引用或清空旧精选。
 - 运行时数据库、缓存、导出分别位于本仓库 `data/db/`、`data/cache/`、`data/exports/`；旧数据库备份位于 `data/backups/`。不引用旧仓库作为运行时数据源。
@@ -24,5 +25,8 @@
 - Pages 仅 workflow_dispatch 手动选择明确的 data-* 版本；禁止 push/release 自动发布，只上传经过审计的静态前端 artifact。
 - 远端修改、发布或公开个人数据须有用户针对该操作的明确授权。
 - 保留已有改动；提交采用中文 Conventional Commits。共享行为、数据库与导出边界改动应加针对性测试。
+- `main` 是生产分支；编辑前检查分支，若在 `main` 必须先创建 `feat/`、`fix/`、`docs/`、`chore/` 或 `release/` 分支。禁止直接向 `main` 提交、推送或强推，所有变更及版本更新通过 PR 合入。
+- 应用版本同步 `pixi.toml`、根和两个前端的 `package.json` 与 npm 锁文件。README分别标明“最新版本”和“当前功能版本”；patch修复不替换当前major/minor的feature摘要，完整记录在 `docs/changelog.md`。文档或流程调整本身不强制升版本。
+- 遵守 `docs/development.md`；版本标签和软件Release只能指向已合入并验收的 `main` 提交，需另行授权。创建分支、更新文档不代表授权推送、建PR、合并或发布。
 - 用户要求不自动运行程序或测试时，提供运行指令，不启动服务。
 - 在 D:\Code 工作时遵守上级 AGENTS.md 的本地 memory 约定，绝不上传 .agents。
