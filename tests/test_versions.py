@@ -47,3 +47,19 @@ def test_pr_workflow_is_documented_for_agents_and_contributors():
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "main" in text, path
         assert "PR" in text, path
+
+
+def test_display_name_matches_in_all_entry_points():
+    for path in (
+        "README.md",
+        "AGENTS.md",
+        "apps/local-ui/index.html",
+        "apps/public-ui/index.html",
+        "apps/local-ui/src/App.vue",
+        "apps/local-ui/src/TrailsPreview.vue",
+        "apps/public-ui/src/App.vue",
+        "src/pic_timeline/templates/index.html",
+    ):
+        assert "Moments · 拾光录" in (ROOT / path).read_text(encoding="utf-8"), path
+    assert "拾光录" in (ROOT / "user_guide.md").read_text(encoding="utf-8")
+    assert read_json("package.json")["name"] == "moments"

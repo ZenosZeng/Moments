@@ -2,7 +2,7 @@
 
 `readme-cover.png` 使用内置 `image_gen` 重新生成，为 2048 × 768 的不透明 PNG，仅用于开源项目 README。没有输入个人照片、数据库、真实行程或其他项目的图片；风景照片全部为生成示意，不代表用户去过的地方，也不是应用截图。
 
-展示名为“Moments · 方舟旅迹”，副标题为“照片 · 地图 · 时间线”。使用原有合成首图作为编辑输入，由内置 `image_gen` 替换主标题，保留摄影拼贴与轻量时间线；没有使用个人素材。
+展示名为“Moments · 拾光录”，副标题为“照片 · 地图 · 时间线”。使用原有合成首图作为编辑输入，由内置 `image_gen` 替换主标题，保留摄影拼贴与轻量时间线；没有使用个人素材。
 
 底图采用居中项目名、中文副标题、摄影拼贴与轻量时间线。参考 [Immich](https://github.com/immich-app/immich) 和 [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy) README 的品牌与图片展示层次，不复制其图片、Logo 或界面。
 
@@ -25,12 +25,15 @@ Constraints: original generated scenery only; not a real application screenshot.
 
 ## 中文名编辑提示词
 
+本次更名使用既有合成首图作为输入，仅替换主标题。下列为本轮内置 `image_gen` 的完整提示词：
+
 ```text
 Use case: text-localization.
-Asset type: the PNG README masthead for Moments, now also named 方舟旅迹.
-Input image 1: edit target, an original AI-generated photographic README banner. It contains no personal photos or actual travel records.
-Primary request: update only the large main title from "Moments" to exactly "Moments · 方舟旅迹". This is a bilingual project name. Render all four Chinese characters correctly: 方 舟 旅 迹, in that order. Keep the separator as a centered dot.
-Keep the existing smaller subtitle verbatim: "照片 · 地图 · 时间线".
-Composition: retain the same panoramic 2048 by 768 framing, clean near-white background, centered heading, staggered photographic prints, landscape details, fine pale timeline and colored nodes, subtle paper shadows, safe margins and visual balance. Adjust only the main title typography and its font size as necessary to fit the complete bilingual name on one centered line; it must remain bold, elegant, prominent and readable when the banner is displayed at 900 pixels wide. Use a refined sans-serif typeface supporting Chinese, charcoal text; no clipping or overlap with photos. The subtitle stays on its own line beneath it with breathing room.
-Invariants: preserve the generated photographs, their positions and lighting, borders, colors and the overall composition. Opaque PNG output, no SVG or flat vector substitution. No extra text, badges, watermark, logos, boats, people, new decorative objects, personal data, or new imagery. Only replace the main project name.
+Asset type: opaque PNG README masthead for the open-source project Moments.
+Input image 1: edit target. This is an existing AI-generated photographic banner with no personal photos or actual travel records.
+Primary request: change ONLY the large main project title to exactly "Moments · 拾光录". Render the three Chinese characters precisely: 拾 光 录, in that order. Use a centered dot between the English and Chinese name. Remove all lettering from the prior Chinese title.
+Keep the smaller subtitle verbatim: "照片 · 地图 · 时间线".
+Invariants: preserve the existing photographic prints, their positions, colors and lighting, fine timeline and colored nodes, clean near-white background and subtle paper shadows. Keep the panoramic 2048 by 768 framing and a fully opaque background.
+Typography: centered, bold, refined charcoal sans serif supporting Chinese. The complete bilingual main title must fit on one line within generous margins, with the subtitle below and clear separation from all photographs.
+No new imagery, people, logos, badges, captions, private data, watermarks, or decorative objects. Do not use SVG or vector stand-ins. Only replace the main title.
 ```

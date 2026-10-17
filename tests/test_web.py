@@ -349,7 +349,7 @@ def test_dashboard_and_invalid_inputs(tmp_path: Path) -> None:
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
-    assert "Moments · 方舟旅迹" in dashboard.get_data(as_text=True)
+    assert "Moments · 拾光录" in dashboard.get_data(as_text=True)
     assert client.get("/api/overview?month=not-a-month").status_code == 400
     assert client.get("/api/days/not-a-date").status_code == 400
 

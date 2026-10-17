@@ -309,7 +309,7 @@ onBeforeUnmount(() => { previewRequest += 1; closePhoto(); });
   <main class="trails-preview">
     <section class="preview-controls">
       <div>
-        <span>Moments · 方舟旅迹</span>
+        <span>Moments · 拾光录</span>
         <h1>旅行预览</h1>
       </div>
       <div class="preview-filters">

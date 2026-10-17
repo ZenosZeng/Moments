@@ -7,6 +7,9 @@ data/*
 !/config/local.example.yaml
 reports/*
 !reports/.gitkeep
+# Case study PDFs stay private unless explicitly approved.
+/docs/Moments_*_功能案例.pdf
+!/docs/Moments_拾光录_功能案例.pdf
 exports/
 
 # Logs and temporary files

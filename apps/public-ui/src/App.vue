@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
       <section class="preview-controls" aria-labelledby="page-title">
         <div>
           <span>旅行地图与时间线</span>
-          <h1 id="page-title">Moments · 方舟旅迹</h1>
+          <h1 id="page-title">Moments · 拾光录</h1>
         </div>
         <div class="preview-filters">
           <label>
