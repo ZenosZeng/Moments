@@ -7,7 +7,7 @@ import re
 import tempfile
 import threading
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlencode
@@ -67,6 +67,20 @@ def parse_date(value: Any) -> str:
     if parsed.isoformat() != value:
         raise ValueError("日期必须使用 YYYY-MM-DD")
     return value
+
+
+def creation_day(created_at: str) -> str:
+    return datetime.fromisoformat(created_at).astimezone().date().isoformat()
+
+
+def next_publish_date(start: str, occupied: set[str]) -> str:
+    candidate = date.fromisoformat(parse_date(start))
+    while candidate.isoformat() in occupied:
+        try:
+            candidate += timedelta(days=1)
+        except OverflowError as exc:
+            raise ValueError("没有可用的计划发布日期") from exc
+    return candidate.isoformat()
 
 
 def filter_settings(preset: Any = "original", strength: Any = 100) -> tuple[str, int]:
@@ -204,7 +218,7 @@ class CompositionStore:
             abort(404)
         return path
 
-    def get(self, group_id: str) -> dict:
+    def _read_group(self, group_id: str) -> dict:
         path = self.folder(group_id) / "group.json"
         if not path.is_file():
             abort(404)
@@ -217,15 +231,35 @@ class CompositionStore:
                 raise ValueError()
             if any(not PHOTO_ID.fullmatch(photo["id"]) for photo in group["photos"]):
                 raise ValueError()
+            if "publishDate" in group:
+                parse_date(group["publishDate"])
+            if type(group.get("autoPublishDate", True)) is not bool:
+                raise ValueError()
         except (ValueError, KeyError, TypeError) as exc:
             raise ValueError("图文组文件格式无效，请检查 group.json") from exc
         group["etag"] = hashlib.sha256(raw).hexdigest()
         return group
 
+    def get(self, group_id: str) -> dict:
+        with self.lock:
+            group = self._read_group(group_id)
+            if "publishDate" not in group:
+                return next(item for item in self.list() if item["id"] == group_id)
+            group.setdefault("autoPublishDate", True)
+            return group
+
     def list(self) -> list[dict]:
-        self._refresh_folders()
-        groups = [self.get(group_id) for group_id in self._folders]
-        return sorted(groups, key=lambda group: group["updatedAt"], reverse=True)
+        with self.lock:
+            self._refresh_folders()
+            groups = [self._read_group(group_id) for group_id in self._folders]
+            occupied = {group["publishDate"] for group in groups if "publishDate" in group}
+            # Old v1 manifests get deterministic suggestions without rewriting private files on read.
+            for group in sorted(groups, key=lambda item: (item["createdAt"], item["id"])):
+                if "publishDate" not in group:
+                    group["publishDate"] = next_publish_date(creation_day(group["createdAt"]), occupied)
+                    occupied.add(group["publishDate"])
+                group.setdefault("autoPublishDate", True)
+            return sorted(groups, key=lambda group: group["updatedAt"], reverse=True)
 
     def sync_caption(self, group: dict) -> None:
         with self.lock:
@@ -273,7 +307,7 @@ class CompositionStore:
             return self._save(payload, group_id)
 
     def _save(self, payload: Any, group_id: str | None) -> dict:
-        if not isinstance(payload, dict) or payload.keys() - {"title", "location", "captionTitle", "caption", "sourceDates", "photos", "etag", "autoFill", "time", "cities"}:
+        if not isinstance(payload, dict) or payload.keys() - {"title", "location", "captionTitle", "caption", "sourceDates", "photos", "etag", "autoFill", "time", "cities", "publishDate", "autoPublishDate"}:
             raise ValueError("图文组参数无效")
         old = self.get(group_id) if group_id else None
         if old and payload.get("etag") != old["etag"]:
@@ -326,6 +360,20 @@ class CompositionStore:
             display_cities = list(dict.fromkeys(city.strip() for city in manual if city.strip()))
         elif "cities" in payload:
             raise ValueError("请先取消城市的自动填写，再手动修改")
+        created_at = old["createdAt"] if old else datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        auto_publish = payload.get("autoPublishDate", (old or {}).get("autoPublishDate", True))
+        if type(auto_publish) is not bool:
+            raise ValueError("计划发布日期的自动填写设置必须为勾选值")
+        if auto_publish:
+            if "publishDate" in payload:
+                raise ValueError("请先取消计划发布日期的自动填写，再手动修改")
+            if old and old["autoPublishDate"]:
+                publish_date = old["publishDate"]
+            else:
+                occupied = {group["publishDate"] for group in self.list() if group["id"] != group_id}
+                publish_date = next_publish_date(creation_day(created_at), occupied)
+        else:
+            publish_date = parse_date(payload.get("publishDate", (old or {}).get("publishDate")))
         group_id = group_id or uuid.uuid4().hex
         folder = self.folder(group_id) if old else self.readable_folder(display_time, display_cities, fields["title"])
         self._folders[group_id] = folder
@@ -376,7 +424,8 @@ class CompositionStore:
                            "filter": {"version": 1, "preset": preset, "strength": strength}})
         now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         group = {"schemaVersion": 1, "id": group_id, "revision": revision,
-                 "createdAt": old["createdAt"] if old else now, "updatedAt": now, **fields,
+                 "createdAt": created_at, "updatedAt": now, **fields,
+                 "publishDate": publish_date, "autoPublishDate": auto_publish,
                  "sourceDates": dates, "days": list(days.values()),
                  "time": display_time, "cities": display_cities, "autoFill": auto_fill, "photos": photos}
         if old and self.get(group_id)["etag"] != old["etag"]:

@@ -3,13 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from PIL import Image, ImageChops
 
 from pic_timeline.analysis import scan_archive
-from pic_timeline.compositions import FILTER_RECIPES, PRESETS, apply_filter, photo_id
+from pic_timeline.compositions import FILTER_RECIPES, PRESETS, apply_filter, creation_day, next_publish_date, photo_id
 from pic_timeline.web import create_app
 
 
@@ -51,6 +53,106 @@ def payload():
 
 def update_payload(group):
     return {**payload(), "etag": group["etag"]}
+
+
+def test_publish_dates_fill_first_free_creation_day_and_survive_edits(workspace):
+    _, client, _, _ = workspace
+    first = client.post("/api/compositions", json=payload()).get_json()
+    start = creation_day(first["createdAt"])
+    assert first["publishDate"] == start and first["autoPublishDate"] is True
+    tomorrow = (datetime.fromisoformat(start) + timedelta(days=1)).date().isoformat()
+    manual = client.post("/api/compositions", json={**payload(), "autoPublishDate": False, "publishDate": tomorrow}).get_json()
+    second = client.post("/api/compositions", json=payload()).get_json()
+    assert manual["publishDate"] == tomorrow
+    assert second["publishDate"] == next_publish_date(start, {start, tomorrow})
+    assert client.delete(f"/api/compositions/{first['id']}", json={"etag": first["etag"]}).status_code == 200
+    edited = client.put(f"/api/compositions/{second['id']}", json=update_payload(second)).get_json()
+    assert edited["publishDate"] == second["publishDate"]
+    assert edited["createdAt"] == second["createdAt"]
+
+
+def test_manual_publish_date_persists_and_can_return_to_automatic(workspace):
+    _, client, _, _ = workspace
+    first = client.post("/api/compositions", json=payload()).get_json()
+    body = {**payload(), "autoPublishDate": False, "publishDate": "2028-02-29"}
+    response = client.post("/api/compositions", json=body)
+    assert response.status_code == 201
+    group = response.get_json()
+    assert group["publishDate"] == "2028-02-29" and group["autoPublishDate"] is False
+    path = Path(group["directory"]) / "group.json"
+    assert json.loads(path.read_bytes())["publishDate"] == "2028-02-29"
+    assert client.get(f"/api/compositions/{group['id']}").get_json()["autoPublishDate"] is False
+    # Older clients that omit scheduling fields must not erase an existing manual plan.
+    kept = client.put(f"/api/compositions/{group['id']}", json=update_payload(group)).get_json()
+    assert kept["publishDate"] == "2028-02-29" and kept["autoPublishDate"] is False
+    automatic = client.put(f"/api/compositions/{group['id']}", json={**update_payload(kept), "autoPublishDate": True}).get_json()
+    assert automatic["publishDate"] == next_publish_date(creation_day(group["createdAt"]), {first["publishDate"]})
+    assert automatic["autoPublishDate"] is True
+    # A deliberately chosen manual date can overlap another plan.
+    duplicate = client.post("/api/compositions", json=body).get_json()
+    assert duplicate["publishDate"] == "2028-02-29"
+
+
+@pytest.mark.parametrize("fields", [
+    {"autoPublishDate": "true"}, {"autoPublishDate": 1}, {"autoPublishDate": None},
+    {"autoPublishDate": False}, {"autoPublishDate": False, "publishDate": ""},
+    {"autoPublishDate": False, "publishDate": "2025-02-29"},
+    {"autoPublishDate": False, "publishDate": "20240502"},
+    {"autoPublishDate": False, "publishDate": None},
+    {"autoPublishDate": True, "publishDate": "2024-05-02"},
+])
+def test_invalid_publish_date_settings_are_rejected(workspace, fields):
+    _, client, _, _ = workspace
+    response = client.post("/api/compositions", json={**payload(), **fields})
+    assert response.status_code == 400
+    assert client.get("/api/compositions").get_json()["groups"] == []
+
+
+def test_old_manifests_get_distinct_plans_without_rewriting_files(workspace):
+    _, client, _, _ = workspace
+    groups = [client.post("/api/compositions", json=payload()).get_json() for _ in range(3)]
+    original = {}
+    for group in groups:
+        path = Path(group["directory"]) / "group.json"
+        data = json.loads(path.read_bytes())
+        data.pop("publishDate")
+        data.pop("autoPublishDate")
+        data["createdAt"] = "2024-05-02T10:00:00+00:00"
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        original[path] = path.read_bytes()
+    listed = client.get("/api/compositions").get_json()["groups"]
+    dates = [group["publishDate"] for group in listed]
+    assert len(set(dates)) == 3
+    assert min(dates) == creation_day("2024-05-02T10:00:00+00:00")
+    for group in listed:
+        assert client.get(f"/api/compositions/{group['id']}").get_json()["publishDate"] == group["publishDate"]
+        assert group["autoPublishDate"] is True
+    assert all(path.read_bytes() == raw for path, raw in original.items())
+    selected = listed[0]
+    saved = client.put(f"/api/compositions/{selected['id']}", json=update_payload(selected)).get_json()
+    assert saved["publishDate"] == selected["publishDate"]
+    assert json.loads((Path(saved["directory"]) / "group.json").read_bytes())["publishDate"] == saved["publishDate"]
+
+
+def test_concurrent_automatic_saves_reserve_different_days(workspace):
+    app, _, _, _ = workspace
+    def create(_number):
+        with app.test_client() as client:
+            response = client.post("/api/compositions", json=payload())
+            assert response.status_code == 201
+            return response.get_json()["publishDate"]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        dates = list(pool.map(create, range(3)))
+    assert len(set(dates)) == 3
+
+
+@pytest.mark.parametrize("start,occupied,expected", [
+    ("2024-02-28", {"2024-02-28", "2024-02-29"}, "2024-03-01"),
+    ("2025-12-31", {"2025-12-31", "2026-01-01"}, "2026-01-02"),
+    ("2024-05-02", {"2024-05-03"}, "2024-05-02"),
+])
+def test_publish_calendar_handles_month_year_and_gaps(start, occupied, expected):
+    assert next_publish_date(start, occupied) == expected
 
 
 def test_sources_only_featured_including_private_dates(workspace):

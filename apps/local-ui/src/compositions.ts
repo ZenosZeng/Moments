@@ -26,6 +26,9 @@ export interface CompositionGroup {
   location: string;
   captionTitle: string;
   caption: string;
+  publishDate?: string;
+  autoPublishDate?: boolean;
+  createdAt?: string;
   sourceDates: string[];
   days: CompositionDate[];
   cities: string[];
@@ -36,6 +39,17 @@ export interface CompositionGroup {
 }
 
 export interface FilterPreset { id: string; name: string }
+
+export function localDate(value = new Date()): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+export function nextPublishDate(start: string, occupied: string[]): string {
+  const dates = new Set(occupied);
+  const candidate = new Date(`${start}T00:00:00Z`);
+  while (dates.has(candidate.toISOString().slice(0, 10))) candidate.setUTCDate(candidate.getUTCDate() + 1);
+  return candidate.toISOString().slice(0, 10);
+}
 
 export function splitLocations(values: string[]): string[] {
   return [...new Set(values.flatMap(value => value.split(/[、，,;；\r\n]+/)).map(value => value.trim()).filter(Boolean))];

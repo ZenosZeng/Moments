@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+test.afterAll(async ({ playwright }) => {
+  const request = await playwright.request.newContext({ baseURL: "http://127.0.0.1:18765" });
+  try { expect((await request.post("/__test__/shutdown")).ok()).toBe(true); }
+  finally { await request.dispose(); }
+});
+
 test("desktop composition editor renders and persists an end-to-end local workflow", async ({ page, request }) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -11,6 +17,10 @@ test("desktop composition editor renders and persists an end-to-end local workfl
   await expect(page.locator(".composition-source-photo")).toHaveCount(12);
   await expect(page.locator(".composition-presets button")).toHaveCount(9);
   const initialGroup = (await (await request.get("/api/compositions")).json()).groups[0];
+  await expect(page.locator(".composition-metadata h2")).toHaveText("基本信息");
+  await expect(page.getByLabel("计划发布日期", { exact: true })).toHaveValue(initialGroup.publishDate);
+  await expect(page.getByLabel("计划发布日期自动填写", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("计划发布日期", { exact: true })).toBeDisabled();
   await expect(page.locator(".composition-directory code")).toHaveText(initialGroup.directory);
   await expect(page.locator(".composition-photo-strength input")).toHaveCount(8);
   await expect(page.locator(".composition-filter input[type='range']")).toHaveCount(0);
@@ -149,6 +159,9 @@ test("desktop composition editor renders and persists an end-to-end local workfl
   await expect(page.getByLabel("图文城市", { exact: true })).toHaveValue("深圳");
   await expect(page.getByLabel("时间自动填写")).toBeChecked();
   await expect(page.getByLabel("城市自动填写")).toBeChecked();
+  await expect(page.getByLabel("计划发布日期", { exact: true })).not.toHaveValue(initialGroup.publishDate);
+  await page.getByLabel("计划发布日期自动填写", { exact: true }).uncheck();
+  await page.getByLabel("计划发布日期", { exact: true }).fill("2028-02-29");
   await page.getByLabel("时间自动填写").uncheck();
   await page.getByLabel("城市自动填写").uncheck();
   await page.getByLabel("图文开始日期").fill("2024-06-01");
@@ -168,6 +181,8 @@ test("desktop composition editor renders and persists an end-to-end local workfl
   await expect(page.getByLabel("城市自动填写")).not.toBeChecked();
   await expect(page.getByLabel("图文开始日期")).toHaveValue("2024-06-01");
   await expect(page.getByLabel("图文城市", { exact: true })).toHaveValue("杭州，南京");
+  await expect(page.getByLabel("计划发布日期", { exact: true })).toHaveValue("2028-02-29");
+  await expect(page.getByLabel("计划发布日期自动填写", { exact: true })).not.toBeChecked();
   await expect(page.locator(".composition-directory code")).toHaveText(newGroup.directory);
   await page.locator(".composition-date-list label").filter({ hasText: "2024-05-03" }).locator("input").check();
   await expect(page.getByLabel("时间自动填写")).toBeChecked();

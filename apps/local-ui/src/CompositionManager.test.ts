@@ -3,7 +3,7 @@ import { createApp, nextTick } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CompositionManager from "./CompositionManager.vue";
 import { api } from "./api";
-import { dateRange, editPhoto, imageUrl, movePhoto, splitLocations } from "./compositions";
+import { dateRange, editPhoto, imageUrl, localDate, movePhoto, nextPublishDate, splitLocations } from "./compositions";
 import type { CompositionDate, CompositionGroup, CompositionPhoto } from "./compositions";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
@@ -27,7 +27,9 @@ async function mount() {
     if (path.endsWith("/agent-request")) return { directory: "data/compositions/group1", requestFile: "agent-request.md", prompt: "读取图文组" };
     if (options?.method === "POST" || options?.method === "PUT") {
       const body = JSON.parse(String(options.body));
-      stored = { ...body, id: "group1", directory: "/workspace/data/compositions/group1", schemaVersion: 1, etag: "v1", updatedAt: "2024-05-04", days, cities: body.autoFill?.cities === false ? body.cities : ["上海", "深圳"], time: body.autoFill?.time === false ? { ...body.time, dates: [body.time.start, body.time.end] } : { start: "2024-05-01", end: "2024-05-03", dates: ["2024-05-01", "2024-05-03"] }, photos: body.photos.map((photo: CompositionPhoto) => ({ ...sourcePhoto(photo.id, photo.captureDate), filter: { preset: photo.preset, strength: photo.strength, version: 1 } })) };
+      const createdAt = options.method === "PUT" ? stored?.createdAt || new Date().toISOString() : new Date().toISOString();
+      const publishDate = body.autoPublishDate !== false ? stored?.autoPublishDate !== false && options.method === "PUT" ? stored?.publishDate : localDate(new Date(createdAt)) : body.publishDate;
+      stored = { ...body, createdAt, publishDate, autoPublishDate: body.autoPublishDate ?? true, id: "group1", directory: "/workspace/data/compositions/group1", schemaVersion: 1, etag: "v1", updatedAt: "2024-05-04", days, cities: body.autoFill?.cities === false ? body.cities : ["上海", "深圳"], time: body.autoFill?.time === false ? { ...body.time, dates: [body.time.start, body.time.end] } : { start: "2024-05-01", end: "2024-05-03", dates: ["2024-05-01", "2024-05-03"] }, photos: body.photos.map((photo: CompositionPhoto) => ({ ...sourcePhoto(photo.id, photo.captureDate), filter: { preset: photo.preset, strength: photo.strength, version: 1 } })) };
       return stored;
     }
     if (path === "/api/compositions/group1" && options?.method === "DELETE") { stored = null; return { deleted: true }; }
@@ -79,6 +81,38 @@ function dragPhoto(host: HTMLElement, from: string, to: string, after = false) {
 afterEach(() => { vi.mocked(api).mockReset(); vi.restoreAllMocks(); });
 
 describe("composition manager", () => {
+  it("shows publication planning in copy, skips occupied days, and persists a manual override", async () => {
+    const { host, app } = await mount();
+    try {
+      const today = localDate();
+      expect(host.querySelector(".composition-metadata h2")!.textContent).toBe("基本信息");
+      expect(host.querySelector<HTMLInputElement>('.composition-copy [aria-label="计划发布日期"]')!.value).toBe(today);
+      expect(host.querySelector<HTMLInputElement>('[aria-label="计划发布日期自动填写"]')!.checked).toBe(true);
+      expect(host.querySelector<HTMLInputElement>('[aria-label="计划发布日期"]')!.disabled).toBe(true);
+      await saveNewGroup(host);
+      expect(host.querySelector(".composition-group-publish")!.textContent).toContain(today);
+      Array.from(host.querySelectorAll<HTMLButtonElement>(".composition-actions button")).find(button => button.textContent === "新建")!.click();
+      await settle();
+      const planned = host.querySelector<HTMLInputElement>('[aria-label="计划发布日期"]')!;
+      expect(planned.value).toBe(nextPublishDate(today, [today]));
+      const auto = host.querySelector<HTMLInputElement>('[aria-label="计划发布日期自动填写"]')!;
+      auto.checked = false; auto.dispatchEvent(new Event("change", { bubbles: true }));
+      await settle();
+      expect(planned.disabled).toBe(false);
+      setInput(host, "计划发布日期", "2028-02-29");
+      await saveNewGroup(host);
+      expect(host.querySelector<HTMLInputElement>('[aria-label="计划发布日期"]')!.value).toBe("2028-02-29");
+      expect(host.querySelector<HTMLInputElement>('[aria-label="计划发布日期自动填写"]')!.checked).toBe(false);
+      const writes = vi.mocked(api).mock.calls.filter(([_path, options]) => options?.method === "POST");
+      expect(JSON.parse(String(writes[0][1]?.body))).toMatchObject({ autoPublishDate: true });
+      expect(JSON.parse(String(writes[0][1]?.body))).not.toHaveProperty("publishDate");
+      expect(JSON.parse(String(writes[1][1]?.body))).toMatchObject({ autoPublishDate: false, publishDate: "2028-02-29" });
+      host.querySelector<HTMLButtonElement>('[title="重新载入图文组和精选来源"]')!.click();
+      await settle();
+      expect(host.querySelector<HTMLInputElement>('[aria-label="计划发布日期"]')!.value).toBe("2028-02-29");
+    } finally { app.unmount(); host.remove(); }
+  });
+
   it.each(["switch", "reload"])("blocks editing during a delayed %s and restores the draft if reading fails", async (action) => {
     const { host, app } = await mount();
     try {
@@ -440,6 +474,12 @@ describe("composition manager", () => {
 });
 
 describe("composition helpers", () => {
+  it("plans calendar days across leap days and years without changing the input", () => {
+    expect(nextPublishDate("2024-02-28", ["2024-02-28", "2024-02-29"])).toBe("2024-03-01");
+    expect(nextPublishDate("2025-12-31", ["2025-12-31", "2026-01-01"])).toBe("2026-01-02");
+    expect(nextPublishDate("2024-05-02", ["2024-05-03"])).toBe("2024-05-02");
+    expect(localDate(new Date(2024, 0, 2, 23, 59))).toBe("2024-01-02");
+  });
   it("splits comma-separated locations individually while preserving words and removing duplicates", () => {
     expect(splitLocations(["外滩， 南京路、街巷,公园；河边", "公园;海边\nOld Town"])).toEqual(["外滩", "南京路", "街巷", "公园", "河边", "海边", "Old Town"]);
   });

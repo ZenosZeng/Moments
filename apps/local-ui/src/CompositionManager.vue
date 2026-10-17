@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
-import { Check, Copy, FileText, FolderOpen, GripVertical, ImagePlus, LoaderCircle, MapPin, Palette, Plus, RefreshCw, Save, Search, Sparkles, Trash2, WandSparkles, X, ZoomIn } from "@lucide/vue";
+import { CalendarDays, Check, ClipboardList, Copy, FileText, FolderOpen, GripVertical, ImagePlus, LoaderCircle, MapPin, Palette, Plus, RefreshCw, Save, Search, Sparkles, Trash2, WandSparkles, X, ZoomIn } from "@lucide/vue";
 import { api } from "./api";
 import PhotoLightbox from "./PhotoLightbox.vue";
-import { dateRange, editPhoto, imageUrl, movePhoto, splitLocations } from "./compositions";
+import { dateRange, editPhoto, imageUrl, localDate, movePhoto, nextPublishDate, splitLocations } from "./compositions";
 import type { CompositionDate, CompositionGroup, CompositionPhoto, FilterPreset } from "./compositions";
 
 const groups = ref<CompositionGroup[]>([]);
@@ -19,6 +19,9 @@ const title = ref("");
 const location = ref("");
 const captionTitle = ref("");
 const caption = ref("");
+const autoPublishDate = ref(true);
+const manualPublishDate = ref("");
+const draftCreatedDate = ref(localDate());
 const autoTime = ref(true);
 const autoCities = ref(true);
 const manualStart = ref("");
@@ -55,6 +58,15 @@ const automaticCities = computed(() => [...new Set(chosenDays.value.flatMap(day 
 const startValue = computed({ get: () => autoTime.value ? automaticDates.value[0] || "" : manualStart.value, set: value => { manualStart.value = value; } });
 const endValue = computed({ get: () => autoTime.value ? automaticDates.value[automaticDates.value.length - 1] || "" : manualEnd.value, set: value => { manualEnd.value = value; } });
 const cityValue = computed({ get: () => autoCities.value ? automaticCities.value : manualCities.value, set: value => { manualCities.value = value; } });
+const publishDateValue = computed({
+  get: () => {
+    if (!autoPublishDate.value) return manualPublishDate.value;
+    if (current.value?.publishDate && current.value.autoPublishDate !== false) return current.value.publishDate;
+    const start = current.value?.createdAt ? localDate(new Date(current.value.createdAt)) : draftCreatedDate.value;
+    return nextPublishDate(start, groups.value.filter(group => group.id !== current.value?.id).flatMap(group => group.publishDate ? [group.publishDate] : []));
+  },
+  set: value => { manualPublishDate.value = value; }
+});
 const locations = computed(() => splitLocations(chosenDays.value.flatMap(day => day.places)));
 const activePhoto = computed(() => photos.value.find(photo => photo.id === activeId.value) || photos.value[0]);
 const chosenIds = computed(() => new Set(photos.value.map(photo => photo.id)));
@@ -71,6 +83,8 @@ watch(() => [previewPhoto.value?.id, previewPhoto.value?.preset, previewPhoto.va
 function payload() {
   return {
     title: title.value, location: location.value, captionTitle: captionTitle.value, caption: caption.value,
+    autoPublishDate: autoPublishDate.value,
+    ...(!autoPublishDate.value ? { publishDate: manualPublishDate.value } : {}),
     sourceDates: [...selectedDates.value].sort(),
     autoFill: { time: autoTime.value, cities: autoCities.value },
     ...(!autoTime.value ? { time: { start: manualStart.value, end: manualEnd.value } } : {}),
@@ -144,6 +158,12 @@ function changeCityMode(event: Event) {
   autoCities.value = enabled;
 }
 
+function changePublishDateMode(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked;
+  if (!enabled) manualPublishDate.value = publishDateValue.value;
+  autoPublishDate.value = enabled;
+}
+
 function applyGroup(loaded: CompositionGroup | null) {
   current.value = loaded;
   clearPhotoDrag();
@@ -151,6 +171,9 @@ function applyGroup(loaded: CompositionGroup | null) {
   location.value = loaded?.location || "";
   captionTitle.value = loaded?.captionTitle || "";
   caption.value = loaded?.caption || "";
+  autoPublishDate.value = loaded?.autoPublishDate ?? true;
+  manualPublishDate.value = loaded?.publishDate || "";
+  if (!loaded) draftCreatedDate.value = localDate();
   selectedDates.value = [...(loaded?.sourceDates || [])];
   autoTime.value = loaded?.autoFill?.time ?? true;
   autoCities.value = loaded?.autoFill?.cities ?? true;
@@ -252,6 +275,7 @@ async function save(): Promise<CompositionGroup | null> {
   clearMessages();
   if (!title.value.trim() || !location.value.trim()) { problem.value = "标题和地点必填"; return null; }
   if (!selectedDates.value.length || !photos.value.length) { problem.value = "至少选择一个日期和一张精选照片"; return null; }
+  if (!autoPublishDate.value && !manualPublishDate.value) { problem.value = "请选择计划发布日期"; return null; }
   saving.value = true;
   try {
     const saved = await api<CompositionGroup>(current.value ? `/api/compositions/${current.value.id}` : "/api/compositions", {
@@ -354,7 +378,7 @@ onBeforeUnmount(() => { window.removeEventListener("beforeunload", beforeUnload)
       <aside class="composition-sidebar">
         <section class="composition-library"><h2><FolderOpen :size="15" />图文组 <span>{{ groups.length }}</span></h2>
           <div class="composition-group-list"><button v-for="group in groups" :key="group.id" class="composition-group" :class="{ active: current?.id === group.id }" type="button" :disabled="saving" @click="openGroup(group)">
-            <img v-if="group.photos[0]" :src="group.photos[0].thumbnail" alt="" loading="lazy" /><span><strong>{{ group.title }}</strong><small>{{ group.location }}</small><small>{{ group.photos.length }} 张 · {{ group.time.start }}</small></span>
+            <img v-if="group.photos[0]" :src="group.photos[0].thumbnail" alt="" loading="lazy" /><span><strong>{{ group.title }}</strong><small>{{ group.location }}</small><small>{{ group.photos.length }} 张 · {{ group.time.start }}</small><small v-if="group.publishDate" class="composition-group-publish"><CalendarDays :size="11" />{{ group.publishDate }}</small></span>
           </button><p v-if="!groups.length" class="composition-empty">暂无图文组</p></div>
         </section>
         <section class="composition-date-picker"><h2>精选日期 <span>{{ selectedDates.length }} 已选</span></h2>
@@ -365,6 +389,7 @@ onBeforeUnmount(() => { window.removeEventListener("beforeunload", beforeUnload)
       </aside>
       <div class="composition-main">
         <form id="composition-form" class="composition-metadata" @submit.prevent="save">
+          <header><h2 class="composition-section-title"><ClipboardList :size="16" />基本信息</h2></header>
           <label>标题 <b>*</b><input v-model="title" required maxlength="140" aria-label="图文组标题" placeholder="图文组标题" :disabled="saving" /></label>
           <label>地点 <b>*</b><input v-model="location" required maxlength="300" aria-label="图文组地点" placeholder="景点、街区或小片区域" :disabled="saving" /></label>
           <div class="composition-info-field"><span>时间</span><div class="composition-date-inputs"><input v-model="startValue" type="date" aria-label="图文开始日期" :required="!autoTime" :disabled="saving || autoTime" /><span>至</span><input v-model="endValue" type="date" aria-label="图文结束日期" :min="startValue" :required="!autoTime" :disabled="saving || autoTime" /></div><label class="composition-auto"><input type="checkbox" :checked="autoTime" :disabled="saving" aria-label="时间自动填写" @change="changeTimeMode" />自动填写</label></div>
@@ -372,7 +397,7 @@ onBeforeUnmount(() => { window.removeEventListener("beforeunload", beforeUnload)
           <div v-if="locations.length" class="composition-location-hints"><MapPin :size="13" /><button v-for="place in locations" :key="place" type="button" :title="`填入地点：${place}`" :aria-pressed="splitLocations([location]).includes(place)" :class="{ selected: splitLocations([location]).includes(place) }" :disabled="saving" @click="addLocation(place)">{{ place }}</button></div>
         </form>
         <div class="composition-editing">
-          <section class="composition-selection"><header><h2><ImagePlus :size="16" />组内图片 <span>{{ photos.length }}</span></h2></header>
+          <section class="composition-selection"><header><h2 class="composition-section-title"><ImagePlus :size="16" />组内图片 <span>{{ photos.length }}</span></h2></header>
             <p class="sr-only" role="status">{{ sortNotice }}</p>
             <div v-if="photos.length" class="composition-selected-grid">
               <article v-for="(photo, index) in photos" :key="photo.id" class="composition-photo" :data-photo-id="photo.id" :class="{ active: activePhoto?.id === photo.id, dragging: draggedId === photo.id, 'drop-before': dropTarget?.id === photo.id && !dropTarget.after, 'drop-after': dropTarget?.id === photo.id && dropTarget.after }" @dragover="overPhoto($event, photo)" @dragleave="leavePhoto($event, photo)" @drop="dropPhoto($event, photo)">
@@ -387,13 +412,17 @@ onBeforeUnmount(() => { window.removeEventListener("beforeunload", beforeUnload)
             <div v-else class="composition-empty-selection"><ImagePlus :size="30" /><p>尚未选入图片</p></div>
           </section>
           <aside class="composition-inspector">
-            <section class="composition-filter"><header><h2><Palette :size="15" />滤镜 · {{ presets.length }} <span v-if="activePhoto">{{ photos.findIndex(p => p.id === activePhoto.id) + 1 }} / {{ photos.length }}</span></h2><button type="button" title="将当前滤镜应用到整组，保留各图强度" :disabled="!activePhoto || saving" @click="applyToAll"><WandSparkles :size="15" /></button></header>
+            <section class="composition-filter"><header><h2 class="composition-section-title"><Palette :size="15" />滤镜 · {{ presets.length }} <span v-if="activePhoto">{{ photos.findIndex(p => p.id === activePhoto.id) + 1 }} / {{ photos.length }}</span></h2><button type="button" title="将当前滤镜应用到整组，保留各图强度" :disabled="!activePhoto || saving" @click="applyToAll"><WandSparkles :size="15" /></button></header>
               <div v-if="activePhoto" class="composition-presets"><button v-for="preset in presets" :key="preset.id" type="button" :class="{ active: activePhoto.preset === preset.id }" :title="preset.name" :aria-label="preset.name" :aria-pressed="activePhoto.preset === preset.id" :disabled="saving" @click="activePhoto.preset = preset.id"><img :src="imageUrl(activePhoto, 'thumb', preset.id, 100)" alt="" loading="lazy" /><span>{{ preset.name }}</span></button></div>
             </section>
-            <section class="composition-copy"><h2><FileText :size="15" />文案</h2><label>文案标题<input v-model="captionTitle" maxlength="140" aria-label="文案标题" placeholder="选填" :disabled="saving" /></label><label>文案正文<textarea v-model="caption" maxlength="20000" rows="8" aria-label="文案正文" placeholder="选填" :disabled="saving"></textarea></label></section>
+            <section class="composition-copy">
+              <h2 class="composition-section-title"><FileText :size="15" />文案</h2>
+              <div class="composition-publish-field"><label for="composition-publish-date">计划发布日期</label><input id="composition-publish-date" v-model="publishDateValue" form="composition-form" type="date" aria-label="计划发布日期" :required="!autoPublishDate" :disabled="saving || autoPublishDate" /><label class="composition-auto"><input type="checkbox" :checked="autoPublishDate" :disabled="saving" aria-label="计划发布日期自动填写" @change="changePublishDateMode" />自动填写</label></div>
+              <label>文案标题<input v-model="captionTitle" maxlength="140" aria-label="文案标题" placeholder="选填" :disabled="saving" /></label><label>文案正文<textarea v-model="caption" maxlength="20000" rows="8" aria-label="文案正文" placeholder="选填" :disabled="saving"></textarea></label>
+            </section>
           </aside>
         </div>
-        <section class="composition-sources"><header><h2>精选来源 <span>{{ chosenDays.length }} 个日期</span></h2></header>
+        <section class="composition-sources"><header><h2 class="composition-section-title">精选来源 <span>{{ chosenDays.length }} 个日期</span></h2></header>
           <p v-if="!chosenDays.length" class="composition-empty">尚未选择日期</p>
           <section v-for="day in chosenDays" :key="day.captureDate" class="composition-source-day"><header><strong>{{ day.date }}</strong><span>{{ day.cities.join('、') }}</span><small>{{ day.places.join('，') }}</small><LoaderCircle v-if="loadingDates.includes(day.captureDate)" class="spin" :size="15" /></header>
             <div class="composition-source-grid"><article v-for="photo in sourcePhotos[day.captureDate] || []" :key="photo.id" class="composition-source-photo" :class="{ chosen: chosenIds.has(photo.id) }"><button type="button" :title="chosenIds.has(photo.id) ? '取消选择照片' : '选入图文组'" :aria-pressed="chosenIds.has(photo.id)" :disabled="saving" @click="togglePhoto(photo)"><img :src="photo.thumbnail" alt="精选来源照片" loading="lazy" /><span v-if="chosenIds.has(photo.id)"><Check :size="16" /></span></button><button class="composition-source-zoom" type="button" title="放大来源照片" @click="openPreview(photo, sourcePhotos[day.captureDate] || [])"><ZoomIn :size="15" /></button></article></div>

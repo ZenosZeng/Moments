@@ -2,18 +2,21 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import logging
 import tempfile
+import threading
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+from werkzeug.serving import make_server
 
 from pic_timeline.analysis import scan_archive
 from pic_timeline.compositions import photo_id
 from pic_timeline.web import create_app
 
 
-def demo_app(root: Path):
+def demo_app(root: Path, shutdown: Callable | None = None):
     source = root / "synthetic-photos"
     month = source / "202405_a"
     month.mkdir(parents=True)
@@ -34,6 +37,8 @@ def demo_app(root: Path):
     app = create_app(index_path=index, annotation_path=root / "data/db/annotations.sqlite3",
                      thumbnail_root=root / "data/cache/thumbnails", source_finder=lambda: source,
                      composition_root=root / "data/compositions")
+    if shutdown is not None:
+        app.add_url_rule("/__test__/shutdown", view_func=shutdown, methods=["POST"])
     client = app.test_client()
     for day, start, city, place in (("02", 1, "深圳", "海边、公园、很长的滨海步道地点名称"), ("03", 7, "上海", "外滩、街巷")):
         result = client.put(f"/api/days/2024-05-{day}/annotation", json={
@@ -58,4 +63,9 @@ if __name__ == "__main__":
     temporary_root.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="composition-browser-", dir=temporary_root) as directory:
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
-        demo_app(Path(directory)).run(host="127.0.0.1", port=args.port, use_reloader=False, threaded=True)
+        def shutdown():
+            threading.Thread(target=server.shutdown, daemon=True).start()
+            return {"stopping": True}
+
+        with make_server("127.0.0.1", args.port, demo_app(Path(directory), shutdown), threaded=True) as server:
+            server.serve_forever()

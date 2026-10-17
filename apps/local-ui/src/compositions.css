@@ -25,6 +25,7 @@
 .composition-group > span { min-width: 0; display: grid; gap: 4px; align-content: center; }
 .composition-group strong { font-size: 12px; color: #2e4436; font-weight: 600; overflow-wrap: anywhere; }
 .composition-group small { color: #718075; font-size: 10px; overflow-wrap: anywhere; }
+.composition-group small.composition-group-publish { display: flex; align-items: center; gap: 5px; color: #546c83; }
 .composition-date-picker { border-top: 1px solid #d8dfdc; padding-top: 20px; }
 .composition-search { display: flex; align-items: center; gap: 5px; margin: 12px 0; height: 33px; padding: 0 8px; border: 1px solid #cdd6d0; border-radius: 4px; background: white; color: #849087; }
 .composition-search input { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; font-size: 11px; }
@@ -37,7 +38,9 @@
 .composition-date-list small { color: #79867d; font-size: 10px; overflow-wrap: anywhere; }
 .composition-date-list > label > small { margin-left: auto; flex-shrink: 0; }
 .composition-main { min-width: 0; padding: 20px 0 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) 402px; column-gap: 24px; align-content: start; }
-.composition-metadata { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.1fr) minmax(268px, 1.35fr) minmax(120px, .8fr); gap: 14px; border-bottom: 1px solid #d8dfdc; padding-bottom: 20px; }
+.composition-metadata { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.1fr) minmax(268px, 1.35fr) minmax(120px, .8fr); gap: 14px; border-bottom: 2px solid #b9c8c0; padding-bottom: 24px; }
+.composition-metadata > header { grid-column: 1 / -1; padding-bottom: 12px; border-bottom: 1px solid #d2dcd6; }
+.composition-workspace h2.composition-section-title { min-height: 22px; padding-left: 9px; border-left: 3px solid #748991; font-size: 14px; }
 .composition-metadata > label, .composition-copy label { display: block; min-width: 0; font-size: 11px; color: #687a6d; }
 .composition-metadata b { color: #b06a4b; font-weight: 400; }
 .composition-workspace input:not([type='checkbox']):not([type='range']):not([type='search']), .composition-workspace textarea, .composition-modal textarea { width: 100%; margin-top: 7px; padding: 9px 10px; border: 1px solid #cbd5ce; border-radius: 4px; color: #273d30; background: #fff; font-size: 12px; line-height: 1.6; }
@@ -53,7 +56,8 @@
 .composition-location-hints button:hover, .composition-location-hints button.selected { color: #286447; border-color: #76a187; background: #e6efe8; }
 .composition-editing { display: contents; }
 .composition-selection { grid-column: 1; min-width: 0; padding: 20px 0; }
-.composition-selection > header { height: 24px; margin-bottom: 12px; }
+.composition-selection > header { min-height: 32px; padding-bottom: 10px; margin-bottom: 16px; border-bottom: 1px solid #cbd7d0; }
+.composition-selection h2.composition-section-title { border-left-color: #397c60; }
 .composition-selected-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 14px; align-content: start; }
 .composition-photo { position: relative; min-width: 0; overflow: hidden; border: 1px solid #d8dfd9; border-radius: 5px; background: #fff; }
 .composition-photo.active { border-color: #367c5d; box-shadow: 0 0 0 1px #367c5d; }
@@ -75,16 +79,21 @@
 .composition-photo-tools span { min-width: 0; flex: 1; font-size: 9px; color: #8a958c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composition-photo-strength { display: grid; grid-template-columns: 1fr auto; gap: 5px; padding: 6px 9px 9px; border-top: 1px solid #e7ece8; font-size: 10px; color: #6f8274; }
 .composition-photo-strength input { grid-column: 1 / -1; width: 100%; min-width: 0; margin: 0; accent-color: #377a59; }
-.composition-inspector { grid-column: 2; grid-row: 2 / span 2; min-width: 0; border-left: 1px solid #d8dfdc; padding: 20px 0 20px 20px; }
-.composition-filter header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.composition-inspector { grid-column: 2; grid-row: 2 / span 2; min-width: 0; border-left: 2px solid #c7d2cb; padding: 20px 0 20px 20px; }
+.composition-filter header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #cbd7d0; margin-bottom: 16px; }
+.composition-filter h2.composition-section-title { border-left-color: #7582a2; }
 .composition-filter h2 { flex: 1; }
 .composition-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; align-content: start; padding: 2px; }
 .composition-presets button { min-width: 0; padding: 0 0 5px; border: 1px solid transparent; border-radius: 4px; background: transparent; overflow: hidden; }
 .composition-presets button.active { border-color: #337959; background: #e6eee8; }
 .composition-presets img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 .composition-presets span { display: block; margin-top: 6px; font-size: 11px; color: #6a7a6d; }
-.composition-copy { border-top: 1px solid #d8dfdc; margin-top: 22px; padding-top: 20px; }
+.composition-copy { border-top: 2px solid #b9c8c0; margin-top: 26px; padding-top: 22px; }
+.composition-copy > h2.composition-section-title { border-left-color: #a37a65; padding-bottom: 0; }
 .composition-copy label { margin-top: 14px; }
+.composition-publish-field { padding-bottom: 16px; border-bottom: 1px solid #d2dcd6; }
+.composition-copy label.composition-auto { display: flex; margin-top: 8px; }
+.composition-publish-field input[type='date']:disabled { color: #53675b; background: #edf1ee; opacity: 1; }
 .composition-copy textarea { resize: vertical; min-height: 154px; }
 .composition-lightbox-editor { color: #d3dfd7; }
 .composition-lightbox-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 18px; }
@@ -97,7 +106,7 @@
 .composition-lightbox-strength { display: grid; grid-template-columns: 1fr auto; gap: 15px; margin-top: 26px; padding-top: 22px; border-top: 1px solid #3b4a42; font-size: 12px; }
 .composition-lightbox-strength output { color: #a5c8b1; }
 .composition-lightbox-strength input { grid-column: 1 / -1; width: 100%; min-width: 0; margin: 0; accent-color: #8ebfa1; }
-.composition-sources { grid-column: 1; border-top: 1px solid #d8dfdc; padding-top: 20px; }
+.composition-sources { grid-column: 1; border-top: 2px solid #b9c8c0; padding-top: 22px; }
 .composition-sources > header { margin-bottom: 20px; }
 .composition-source-day { margin-bottom: 24px; }
 .composition-source-day > header { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin-bottom: 12px; font-size: 12px; color: #617765; }
